@@ -9,5 +9,5 @@
 //         echo "\n";
 //     }
 // }
-echo "asaasa"
+echo "aเกหกดหกเด"
 ?>
