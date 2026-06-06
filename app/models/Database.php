@@ -1,6 +1,8 @@
 <?php
 // Database model
 
+require_once __DIR__ . '/../../config.php';
+
 class Database
 {
     private static ?PDO $connection = null;
@@ -9,10 +11,6 @@ class Database
     {
         if (self::$connection instanceof PDO) {
             return self::$connection;
-        }
-
-        if (!file_exists(DB_PATH)) {
-            touch(DB_PATH);
         }
 
         self::$connection = new PDO(DB_DSN, DB_USER, DB_PASS, [
@@ -27,22 +25,23 @@ class Database
     private static function initialize(): void
     {
         $conn = self::$connection;
+
         $conn->exec(
             'CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL,
-                fullname TEXT DEFAULT ""
-            )'
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(255) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                fullname VARCHAR(255) DEFAULT ""
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
 
         $conn->exec(
             'CREATE TABLE IF NOT EXISTS rooms (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                number TEXT NOT NULL,
-                type TEXT NOT NULL,
-                status TEXT NOT NULL
-            )'
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                number VARCHAR(50) NOT NULL,
+                type VARCHAR(100) NOT NULL,
+                status VARCHAR(50) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
 
         $count = $conn->query('SELECT COUNT(*) FROM users')->fetchColumn();
