@@ -99,6 +99,7 @@
                 <a href="index.php?page=logout">ออกจากระบบ</a>
             <?php else: ?>
                 <a href="login.php">เข้าสู่ระบบ</a>
+                <a href="register.php">สมัครสมาชิก</a>
             <?php endif; ?>
         </nav>
     </div>

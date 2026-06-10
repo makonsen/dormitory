@@ -18,4 +18,12 @@ class User
         $conn = Database::getConnection();
         return $conn->query('SELECT id, username, fullname FROM users ORDER BY id ASC')->fetchAll();
     }
+    
+    public static function create(string $username, string $password, string $fullname): bool
+    {
+        $conn = Database::getConnection();
+        $stmt = $conn->prepare('INSERT INTO users (username, password, fullname) VALUES (?, ?, ?)');
+        $hash = password_hash($password, PASSWORD_DEFAULT);
+        return $stmt->execute([$username, $hash, $fullname]);
+    }
 }
