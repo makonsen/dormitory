@@ -2,32 +2,28 @@
 
 define('APP_NAME', 'ระบบจัดการหอพัก');
 
+// Database configuration for MySQL (SQLite driver not available)
 define(
     'DB_DSN',
-    'sqlite:' . __DIR__ . '/storage/database.sqlite'
+    'mysql:host=localhost;charset=utf8mb4'
 );
 
-define('DB_USER', null);
-define('DB_PASS', null);
+define('DB_USER', 'root');
+define('DB_PASS', 'root');
 
 define('DB_CONNECTIONS', [
     [
-        'name' => 'sqlite',
-        'dsn' => 'sqlite:' . __DIR__ . '/storage/database.sqlite',
-        'user' => null,
-        'pass' => null,
-    ],
-    [
-        'name' => 'mysql_laragon',
-        'dsn' => 'mysql:host=127.0.0.1;charset=utf8mb4',
+        'name' => 'mysql_mamp',
+        'dsn' => 'mysql:host=localhost;charset=utf8mb4',
         'user' => 'root',
-        'pass' => '',
+        'pass' => 'root',
         'database' => 'dormitory',
     ],
     [
-        'name' => 'mysql_config',
-        'dsn' => 'mysql:host=localhost;dbname=dormitory;charset=utf8mb4',
-        'user' => 'dormitory_user',
-        'pass' => 'StrongPassword123!',
+        'name' => 'mysql_localhost',
+        'dsn' => 'mysql:host=127.0.0.1:3306;charset=utf8mb4',
+        'user' => 'root',
+        'pass' => 'root',
+        'database' => 'dormitory',
     ],
 ]);

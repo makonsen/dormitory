@@ -7,7 +7,7 @@ class Database
 {
     private static ?PDO $connection = null;
 
-    public static function getConnection(): PDO
+    public static function getConnection(): ?PDO
     {
         if (self::$connection instanceof PDO) {
             return self::$connection;
