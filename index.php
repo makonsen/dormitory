@@ -23,11 +23,13 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 date_default_timezone_set('Asia/Bangkok');
+$now = new DateTimeImmutable();
 
 define('DATA_FILE', 'data.json');
 
 // Function to load data from JSON file
-function getData() {
+function getData()
+{
     if (!file_exists(DATA_FILE)) {
         // หากไฟล์ไม่มีอยู่ ให้คืนค่าโครงสร้างเริ่มต้นที่ว่างเปล่า
         error_log("DATA_FILE not found: " . DATA_FILE);
@@ -52,7 +54,8 @@ function getData() {
 }
 
 // Function to save data to JSON file
-function saveData($data): bool {
+function saveData($data): bool
+{
     $jsonData = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     if ($jsonData === false) {
         error_log("JSON encode error for DATA_FILE: " . json_last_error_msg());
@@ -68,7 +71,8 @@ function saveData($data): bool {
 }
 
 // Function to load categories from JSON file
-function getCategories() {
+function getCategories()
+{
     define('CATEGORIES_FILE', 'categories.json');
     $defaultCategories = [
         'income_categories' => ['เงินค่าประกัน', 'เงินค่าห้อง', 'ขายของ', 'ดอกเบี้ย/ปันผล', 'เงินให้เปล่า', 'อื่นๆ'],
@@ -93,34 +97,56 @@ function getCategories() {
     return is_array($categories) ? $categories : $defaultCategories;
 }
 $data = getData(); // โหลดข้อมูลเริ่มต้นโดยใช้ฟังก์ชันใหม่
- $all_categories = getCategories();
+$all_categories = getCategories();
 $inc_categories = $all_categories['income_categories'];
 $categories = $all_categories['expense_categories'];
 
-$month = $_GET['month'] ?? date('Y-m');
+$month = $_GET['month'] ?? $now->format('Y-m');
 $time = strtotime($month . "-01");
 list($s_yr, $s_mo) = explode('-', $month);
 $prev_mo = date('Y-m', strtotime($month . " -1 month"));
 $next_mo = date('Y-m', strtotime($month . " +1 month"));
 
-// ตั้งค่าวัดเริ่มต้นของปฏิทิน
-$default_day = (date('Y-m') === $month) ? (int)date('d') : 1;
-if (isset($_GET['day'])) {
-    $default_day = (int)$_GET['day']; // จำวันที่เพิ่งบันทึก/แก้ไขเสร็จ เพื่อให้ปฏิทินโฟกัสถูกวัน
-}
+// ตั้งค่าวัดเริ่มต้นของปฏิทิน:
+// 1. ถ้ามี 'day' ใน URL (เช่น หลังบันทึก/แก้ไข) ให้ใช้วันนั้น
+// 2. ถ้าไม่มี, ให้ตรวจสอบว่าเป็นเดือนปัจจุบันหรือไม่ ถ้าใช่ให้ใช้วันปัจจุบัน, ถ้าไม่ใช่ให้ใช้วันที่ 1
+$default_day = isset($_GET['day']) ? (int)$_GET['day'] : (($now->format('Y-m') === $month) ? (int)$now->format('d') : 1);
 
 // 2. ดึงข้อมูลการ Edit ขึ้นมาประมวลผลก่อน
-$e_inc = null; if (!empty($_GET['edit_inc'])) foreach ($data['incomes'] as $r) if ((string)$r['id'] === (string)$_GET['edit_inc']) { $e_inc = $r; break; }
-$e_exp = null; if (!empty($_GET['edit_exp'])) foreach ($data['expenses'] as $r) if ((string)$r['id'] === (string)$_GET['edit_exp']) { $e_exp = $r; break; }
-$e_item = null; if (!empty($_GET['edit_item'])) foreach ($data['items'] as $r) if ((string)$r['id'] === (string)$_GET['edit_item']) { $e_item = $r; break; }
-$e_rent = null; if (!empty($_GET['edit_rent'])) foreach ($data['rents'] as $r) if ((string)$r['id'] === (string)$_GET['edit_rent']) { $e_rent = $r; break; }
+$e_inc = null;
+if (!empty($_GET['edit_inc'])) foreach ($data['incomes'] as $r) if ((string)$r['id'] === (string)$_GET['edit_inc']) {
+    $e_inc = $r;
+    break;
+}
+$e_exp = null;
+if (!empty($_GET['edit_exp'])) foreach ($data['expenses'] as $r) if ((string)$r['id'] === (string)$_GET['edit_exp']) {
+    $e_exp = $r;
+    break;
+}
+$e_item = null;
+if (!empty($_GET['edit_item'])) foreach ($data['items'] as $r) if ((string)$r['id'] === (string)$_GET['edit_item']) {
+    $e_item = $r;
+    break;
+}
+$e_rent = null;
+if (!empty($_GET['edit_rent'])) foreach ($data['rents'] as $r) if ((string)$r['id'] === (string)$_GET['edit_rent']) {
+    $e_rent = $r;
+    break;
+}
 
 $def_d = "$month-" . str_pad($default_day, 2, '0', STR_PAD_LEFT);
 
-if ($e_inc) { $default_day = (int)substr($e_inc['date'], 8, 2); $def_d = $e_inc['date']; }
-elseif ($e_exp) { $default_day = (int)substr($e_exp['date'], 8, 2); $def_d = $e_exp['date']; }
-elseif ($e_item) { $default_day = (int)$e_item['due_date']; }
-elseif ($e_rent) { $default_day = (int)$e_rent['due_date']; }
+if ($e_inc) {
+    $default_day = (int)substr($e_inc['date'], 8, 2);
+    $def_d = $e_inc['date'];
+} elseif ($e_exp) {
+    $default_day = (int)substr($e_exp['date'], 8, 2);
+    $def_d = $e_exp['date'];
+} elseif ($e_item) {
+    $default_day = (int)$e_item['due_date'];
+} elseif ($e_rent) {
+    $default_day = (int)$e_rent['due_date'];
+}
 
 // 3. จัดการ Actions (POST/GET) สำหรับบันทึก แก้ไข ลบ
 $action = $_REQUEST['action'] ?? null;
@@ -139,20 +165,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
 
     if (in_array($action, ['save_income', 'save_expense'])) {
         $type = $action === 'save_income' ? 'incomes' : 'expenses';
-        
+
         $title = trim($_POST['title'] ?? '');
         $amount = filter_var($_POST['amount'] ?? '', FILTER_VALIDATE_FLOAT);
         $date = $_POST['date'] ?? '';
         $category = $_POST['category'] ?? '';
 
-        if (empty($title)) { $errors[] = 'กรุณากรอกหัวข้อ/รายการ'; }
-        if ($amount === false || $amount <= 0) { $errors[] = 'จำนวนเงินไม่ถูกต้อง'; }
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !strtotime($date)) { $errors[] = 'รูปแบบวันที่ไม่ถูกต้อง'; }
-        if ($type === 'incomes' && !in_array($category, $inc_categories)) { $errors[] = 'หมวดหมู่รายรับไม่ถูกต้อง'; }
-        if ($type === 'expenses' && !in_array($category, $categories)) { $errors[] = 'หมวดหมู่รายจ่ายไม่ถูกต้อง'; }
+        if (empty($title)) {
+            $errors[] = 'กรุณากรอกหัวข้อ/รายการ';
+        }
+        if ($amount === false || $amount <= 0) {
+            $errors[] = 'จำนวนเงินไม่ถูกต้อง';
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !strtotime($date)) {
+            $errors[] = 'รูปแบบวันที่ไม่ถูกต้อง';
+        }
+        if ($type === 'incomes' && !in_array($category, $inc_categories)) {
+            $errors[] = 'หมวดหมู่รายรับไม่ถูกต้อง';
+        }
+        if ($type === 'expenses' && !in_array($category, $categories)) {
+            $errors[] = 'หมวดหมู่รายจ่ายไม่ถูกต้อง';
+        }
 
         if (empty($errors)) {
-            $redirect_month = substr($date, 0, 7); 
+            $redirect_month = substr($date, 0, 7);
             $redirect_day = (int)substr($date, 8, 2);
             $payload = ['id' => $id, 'title' => htmlspecialchars($title), 'amount' => $amount, 'date' => $date, 'month' => $redirect_month, 'category' => $category];
         }
@@ -167,13 +203,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
         $start_month = $_POST['start_month'] ?? '';
         $due_date = filter_var($_POST['due_date'] ?? '', FILTER_VALIDATE_INT);
 
-        if (empty($name)) { $errors[] = 'กรุณากรอกชื่อรายการสินค้า'; }
-        if ($price === false || $price <= 0) { $errors[] = 'ราคาเต็มไม่ถูกต้อง'; }
-        if ($down === false || $down < 0) { $errors[] = 'เงินดาวน์ไม่ถูกต้อง'; }
-        if ($interest_rate === false || $interest_rate < 0) { $errors[] = 'อัตราดอกเบี้ยไม่ถูกต้อง'; }
-        if ($months === false || $months <= 0) { $errors[] = 'จำนวนงวดไม่ถูกต้อง'; }
-        if (!preg_match('/^\d{4}-\d{2}$/', $start_month) || !strtotime($start_month . '-01')) { $errors[] = 'รูปแบบเดือนเริ่มต้นไม่ถูกต้อง'; }
-        if ($due_date === false || $due_date < 1 || $due_date > 31) { $errors[] = 'วันที่ดีลไม่ถูกต้อง (1-31)'; }
+        if (empty($name)) {
+            $errors[] = 'กรุณากรอกชื่อรายการสินค้า';
+        }
+        if ($price === false || $price <= 0) {
+            $errors[] = 'ราคาเต็มไม่ถูกต้อง';
+        }
+        if ($down === false || $down < 0) {
+            $errors[] = 'เงินดาวน์ไม่ถูกต้อง';
+        }
+        if ($interest_rate === false || $interest_rate < 0) {
+            $errors[] = 'อัตราดอกเบี้ยไม่ถูกต้อง';
+        }
+        if ($months === false || $months <= 0) {
+            $errors[] = 'จำนวนงวดไม่ถูกต้อง';
+        }
+        if (!preg_match('/^\d{4}-\d{2}$/', $start_month) || !strtotime($start_month . '-01')) {
+            $errors[] = 'รูปแบบเดือนเริ่มต้นไม่ถูกต้อง';
+        }
+        if ($due_date === false || $due_date < 1 || $due_date > 31) {
+            $errors[] = 'วันที่ดีลไม่ถูกต้อง (1-31)';
+        }
 
         if (empty($errors)) {
             $net = ($price - $down) + (($price - $down) * ($interest_rate / 100) * ($months / 12));
@@ -189,12 +239,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
         $start_month = $_POST['start_month'] ?? '';
         $end_month = $_POST['end_month'] ?? '';
 
-        if (empty($name)) { $errors[] = 'กรุณากรอกชื่อรายการค่าเช่า/รายจ่ายประจำ'; }
-        if ($amount === false || $amount <= 0) { $errors[] = 'จำนวนเงินไม่ถูกต้อง'; }
-        if ($due_date === false || $due_date < 1 || $due_date > 31) { $errors[] = 'วันที่ดีลไม่ถูกต้อง (1-31)'; }
-        if (!preg_match('/^\d{4}-\d{2}$/', $start_month) || !strtotime($start_month . '-01')) { $errors[] = 'รูปแบบเดือนเริ่มต้นไม่ถูกต้อง'; }
-        if (!preg_match('/^\d{4}-\d{2}$/', $end_month) || !strtotime($end_month . '-01')) { $errors[] = 'รูปแบบเดือนสิ้นสุดไม่ถูกต้อง'; }
-        if (strtotime($start_month . '-01') > strtotime($end_month . '-01')) { $errors[] = 'เดือนเริ่มต้นต้องไม่เกินเดือนสิ้นสุด'; }
+        if (empty($name)) {
+            $errors[] = 'กรุณากรอกชื่อรายการค่าเช่า/รายจ่ายประจำ';
+        }
+        if ($amount === false || $amount <= 0) {
+            $errors[] = 'จำนวนเงินไม่ถูกต้อง';
+        }
+        if ($due_date === false || $due_date < 1 || $due_date > 31) {
+            $errors[] = 'วันที่ดีลไม่ถูกต้อง (1-31)';
+        }
+        if (!preg_match('/^\d{4}-\d{2}$/', $start_month) || !strtotime($start_month . '-01')) {
+            $errors[] = 'รูปแบบเดือนเริ่มต้นไม่ถูกต้อง';
+        }
+        if (!preg_match('/^\d{4}-\d{2}$/', $end_month) || !strtotime($end_month . '-01')) {
+            $errors[] = 'รูปแบบเดือนสิ้นสุดไม่ถูกต้อง';
+        }
+        if (strtotime($start_month . '-01') > strtotime($end_month . '-01')) {
+            $errors[] = 'เดือนเริ่มต้นต้องไม่เกินเดือนสิ้นสุด';
+        }
 
         if (empty($errors)) {
             $redirect_day = $due_date;
@@ -221,7 +283,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
                             $payload['status_by_month'][$month] = $r['status_by_month'][$month] ?? 'ค้างชำระ';
                         }
                     }
-                    $r = $payload; $found = true; break;
+                    $r = $payload;
+                    $found = true;
+                    break;
                 }
             }
             // หากไม่พบ ID แสดงว่าเป็นรายการใหม่ ให้เพิ่มเข้าไปใน array
@@ -232,9 +296,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
                 // หากบันทึกไม่สำเร็จ, ข้อความ error จะถูกตั้งค่าใน saveData() แล้ว
             }
             // Clear post data after successful save
-            unset($_SESSION['post_data']); 
+            unset($_SESSION['post_data']);
         }
-        header("Location: ?month={$redirect_month}&day={$redirect_day}"); exit;
+        header("Location: ?month={$redirect_month}&day={$redirect_day}");
+        exit;
     }
 }
 
@@ -243,7 +308,10 @@ if ($action && isset($_GET['id'])) {
     if (in_array($action, ['toggle_status', 'toggle_status_rent'])) {
         $t = $action === 'toggle_status' ? 'items' : 'rents';
         foreach ($data[$t] as &$r) {
-            if ((string)$r['id'] === (string)$id) { $r['status_by_month'][$month] = ($r['status_by_month'][$month] ?? 'ค้างชำระ') === 'จ่ายแล้ว' ? 'ค้างชำระ' : 'จ่ายแล้ว'; break; }
+            if ((string)$r['id'] === (string)$id) {
+                $r['status_by_month'][$month] = ($r['status_by_month'][$month] ?? 'ค้างชำระ') === 'จ่ายแล้ว' ? 'ค้างชำระ' : 'จ่ายแล้ว';
+                break;
+            }
         }
     } else {
         $t = str_replace('delete_', '', $action) . 's';
@@ -252,18 +320,21 @@ if ($action && isset($_GET['id'])) {
     if (!saveData($data)) { // บันทึกข้อมูลลงไฟล์ JSON โดยใช้ฟังก์ชันใหม่
         // หากบันทึกไม่สำเร็จ, ข้อความ error จะถูกตั้งค่าใน saveData() แล้ว
     }
-    header("Location: ?month={$month}&day={$default_day}"); exit;
+    header("Location: ?month={$month}&day={$default_day}");
+    exit;
 }
 
 // 4. คำนวณยอดรวมและรายละเอียดตามสูตร
-$cal = []; $ledger = [];
-$t_inc = 0;          
-$t_exp_base = 0;     
-$t_rent_paid = 0;    
-$t_item_paid = 0;    
-$t_debt = 0;         
+$cal = [];
+$ledger = [];
+$t_inc = 0;
+$t_exp_base = 0;
+$t_rent_paid = 0;
+$t_item_paid = 0;
+$t_debt = 0;
 
-$active_items = []; $active_rents = [];
+$active_items = [];
+$active_rents = [];
 
 foreach (['incomes', 'expenses'] as $t) {
     foreach ($data[$t] as $r) {
@@ -275,12 +346,12 @@ foreach (['incomes', 'expenses'] as $t) {
                 $t_exp_base += $r['amount'];
             }
             $cal[(int)substr($r['date'], 8, 2)][$t][] = $r;
-            
+
             if ((isset($r['month']) && $r['month'] === $month) || strpos($r['date'], $month) === 0) {
                 $ledger[] = [
-                    'date' => $r['date'], 
-                    'title' => ($t === 'incomes' ? "➕ " : "➖ ") . $r['title'], 
-                    'inc' => $t === 'incomes' ? $r['amount'] : 0, 
+                    'date' => $r['date'],
+                    'title' => ($t === 'incomes' ? "➕ " : "➖ ") . $r['title'],
+                    'inc' => $t === 'incomes' ? $r['amount'] : 0,
                     'exp' => $t === 'expenses' ? $r['amount'] : 0
                 ];
             }
@@ -296,38 +367,40 @@ foreach ($data['items'] as &$item) {
         $item['current_installment_no'] = $inst_no;
         $item['real_remaining_debt'] = max(0, $item['net_debt'] - ($item['monthly_payment'] * $paid));
         $status = $item['status_by_month'][$month] ?? 'ค้างชำระ';
-        
+
         if ($status === 'จ่ายแล้ว') {
-            $t_item_paid += $item['monthly_payment']; 
-        } else { 
-            $t_debt += $item['monthly_payment'];      
+            $t_item_paid += $item['monthly_payment'];
+        } else {
+            $t_debt += $item['monthly_payment'];
         }
 
         $active_items[] = $item;
         $cal[(int)$item['due_date']]['items'][] = ['id' => $item['id'], 'name' => $item['name'], 'amount' => $item['monthly_payment'], 'status' => $status, 'installment' => "$inst_no/{$item['total_months']}"];
-        
+
         $ledger[] = ['date' => "$month-" . str_pad($item['due_date'], 2, '0', STR_PAD_LEFT), 'title' => "📦 {$item['name']} (งวด $inst_no/{$item['total_months']})", 'inc' => 0, 'exp' => $item['monthly_payment']];
     }
-} unset($item);
+}
+unset($item);
 
 foreach ($data['rents'] as &$rent) {
     if ($month >= $rent['start_month'] && $month <= $rent['end_month']) {
         $status = $rent['status_by_month'][$month] ?? 'ค้างชำระ';
-        
+
         if ($status === 'จ่ายแล้ว') {
-            $t_rent_paid += $rent['amount']; 
+            $t_rent_paid += $rent['amount'];
         }
 
         $active_rents[] = $rent;
         $cal[(int)$rent['due_date']]['rents'][] = ['id' => $rent['id'], 'name' => $rent['name'], 'amount' => $rent['amount'], 'status' => $status];
-        
+
         $ledger[] = ['date' => "$month-" . str_pad($rent['due_date'], 2, '0', STR_PAD_LEFT), 'title' => "🏢 {$rent['name']}", 'inc' => 0, 'exp' => $rent['amount']];
     }
-} unset($rent);
+}
+unset($rent);
 
-$t_exp_mo = $t_exp_base + $t_rent_paid + $t_item_paid; 
-$rem = $t_inc - $t_exp_mo;                             
-$t_rent_and_item = $t_rent_paid + $t_item_paid;        
+$t_exp_mo = $t_exp_base + $t_rent_paid + $t_item_paid;
+$rem = $t_inc - $t_exp_mo;
+$t_rent_and_item = $t_rent_paid + $t_item_paid;
 
 $total_plan_count = count($active_items) + count($active_rents);
 $total_plan_amount = array_sum(array_column($active_items, 'monthly_payment')) + array_sum(array_column($active_rents, 'amount'));
@@ -337,10 +410,12 @@ $running_bal = 0;
 foreach ($ledger as &$l) {
     $running_bal += $l['inc'] - $l['exp'];
     $l['balance'] = $running_bal;
-} unset($l);
+}
+unset($l);
 ?>
 <!DOCTYPE html>
 <html lang="th">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -350,16 +425,52 @@ foreach ($ledger as &$l) {
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    
+
     <style>
-        body { font-family: 'Sarabun', sans-serif; }
-        .active-day { border-color: #4f46e5 !important; background-color: #f5f3ff !important; border-width: 2px; }
-        #pdf-render-area { position: absolute; left: -9999px; top: -9999px; width: 700px; background: white; padding: 30px; }
-        .pdf-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
-        .pdf-table th, .pdf-table td { border: 1px solid #cbd5e1; padding: 8px 10px; }
-        .pdf-table th { background-color: #f8fafc; color: #334155; }
-        .text-right { text-align: right; }
-        .text-center { text-align: center; }
+        body {
+            font-family: 'Sarabun', sans-serif;
+        }
+
+        .active-day {
+            border-color: #4f46e5 !important;
+            background-color: #f5f3ff !important;
+            border-width: 2px;
+        }
+
+        #pdf-render-area {
+            position: absolute;
+            left: -9999px;
+            top: -9999px;
+            width: 700px;
+            background: white;
+            padding: 30px;
+        }
+
+        .pdf-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 13px;
+        }
+
+        .pdf-table th,
+        .pdf-table td {
+            border: 1px solid #cbd5e1;
+            padding: 8px 10px;
+        }
+
+        .pdf-table th {
+            background-color: #f8fafc;
+            color: #334155;
+        }
+
+        .text-right {
+            text-align: right;
+        }
+
+        .text-center {
+            text-align: center;
+        }
     </style>
 </head>
 
@@ -453,12 +564,49 @@ foreach ($ledger as &$l) {
         <div class="max-w-7xl mx-auto px-4 mt-6">
             <!-- ข้อมูลสรุปด้านบน -->
             <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
-                <div class="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center"><div class="truncate"><p class="text-[11px] text-gray-500 font-medium">รายรับเดือนนี้</p><h3 class="text-lg font-bold text-emerald-600 mt-1">฿<?= number_format($t_inc, 2) ?></h3></div><div class="bg-emerald-50 p-2 rounded-lg text-emerald-600"><i class="fa-solid fa-arrow-down"></i></div></div>
-                <div class="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center"><div class="truncate"><p class="text-[11px] text-gray-500 font-medium">รายจ่ายโดยรวม</p><h3 class="text-lg font-bold text-rose-500 mt-1">฿<?= number_format($t_exp_mo, 2) ?></h3></div><div class="bg-rose-50 p-2 rounded-lg text-rose-500"><i class="fa-solid fa-arrow-up"></i></div></div>
-                <div class="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center <?= $rem < 0 ? 'bg-red-50' : '' ?>"><div class="truncate"><p class="text-[11px] text-gray-500 font-medium">คงเหลือสุทธิ</p><h3 class="text-lg font-bold <?= $rem < 0 ? 'text-red-600' : 'text-indigo-600' ?> mt-1">฿<?= number_format($rem, 2) ?></h3></div><div class="p-2 rounded-lg <?= $rem < 0 ? 'bg-red-100 text-red-600' : 'bg-indigo-50 text-indigo-600' ?>"><i class="fa-solid fa-scale-balanced"></i></div></div>
-                <div class="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center"><div class="truncate"><p class="text-[11px] text-gray-500 font-medium">ยอดที่ค้างผ่อน</p><h3 class="text-lg font-bold text-amber-600 mt-1">฿<?= number_format($t_debt, 2) ?></h3></div><div class="bg-amber-50 p-2 rounded-lg text-amber-600"><i class="fa-solid fa-clock"></i></div></div>
-                <div class="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center"><div class="truncate"><p class="text-[11px] text-gray-500 font-medium">จ่ายและเช่า (รวม)</p><h3 class="text-lg font-bold text-indigo-600 mt-1">฿<?= number_format($t_rent_and_item, 2) ?></h3></div><div class="bg-indigo-50 p-2 rounded-lg text-indigo-600"><i class="fa-solid fa-check-double"></i></div></div>
-                <div class="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center col-span-2 md:col-span-1"><div class="truncate"><p class="text-[11px] text-gray-500 font-medium">แผนเช่า & ผ่อนชำระ</p><h3 class="text-lg font-bold text-slate-700 mt-1">฿<?= number_format($total_plan_amount, 2) ?></h3><p class="text-[10px] text-gray-400 mt-0.5"><?= $total_plan_count ?> รายการทั้งหมด</p></div><div class="bg-slate-100 p-2 rounded-lg text-slate-600"><i class="fa-solid fa-layer-group"></i></div></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center">
+                    <div class="truncate">
+                        <p class="text-[11px] text-gray-500 font-medium">รายรับเดือนนี้</p>
+                        <h3 class="text-lg font-bold text-emerald-600 mt-1">฿<?= number_format($t_inc, 2) ?></h3>
+                    </div>
+                    <div class="bg-emerald-50 p-2 rounded-lg text-emerald-600"><i class="fa-solid fa-arrow-down"></i></div>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center">
+                    <div class="truncate">
+                        <p class="text-[11px] text-gray-500 font-medium">รายจ่ายโดยรวม</p>
+                        <h3 class="text-lg font-bold text-rose-500 mt-1">฿<?= number_format($t_exp_mo, 2) ?></h3>
+                    </div>
+                    <div class="bg-rose-50 p-2 rounded-lg text-rose-500"><i class="fa-solid fa-arrow-up"></i></div>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center <?= $rem < 0 ? 'bg-red-50' : '' ?>">
+                    <div class="truncate">
+                        <p class="text-[11px] text-gray-500 font-medium">คงเหลือสุทธิ</p>
+                        <h3 class="text-lg font-bold <?= $rem < 0 ? 'text-red-600' : 'text-indigo-600' ?> mt-1">฿<?= number_format($rem, 2) ?></h3>
+                    </div>
+                    <div class="p-2 rounded-lg <?= $rem < 0 ? 'bg-red-100 text-red-600' : 'bg-indigo-50 text-indigo-600' ?>"><i class="fa-solid fa-scale-balanced"></i></div>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center">
+                    <div class="truncate">
+                        <p class="text-[11px] text-gray-500 font-medium">ยอดที่ค้างผ่อน</p>
+                        <h3 class="text-lg font-bold text-amber-600 mt-1">฿<?= number_format($t_debt, 2) ?></h3>
+                    </div>
+                    <div class="bg-amber-50 p-2 rounded-lg text-amber-600"><i class="fa-solid fa-clock"></i></div>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center">
+                    <div class="truncate">
+                        <p class="text-[11px] text-gray-500 font-medium">จ่ายและเช่า (รวม)</p>
+                        <h3 class="text-lg font-bold text-indigo-600 mt-1">฿<?= number_format($t_rent_and_item, 2) ?></h3>
+                    </div>
+                    <div class="bg-indigo-50 p-2 rounded-lg text-indigo-600"><i class="fa-solid fa-check-double"></i></div>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center col-span-2 md:col-span-1">
+                    <div class="truncate">
+                        <p class="text-[11px] text-gray-500 font-medium">แผนเช่า & ผ่อนชำระ</p>
+                        <h3 class="text-lg font-bold text-slate-700 mt-1">฿<?= number_format($total_plan_amount, 2) ?></h3>
+                        <p class="text-[10px] text-gray-400 mt-0.5"><?= $total_plan_count ?> รายการทั้งหมด</p>
+                    </div>
+                    <div class="bg-slate-100 p-2 rounded-lg text-slate-600"><i class="fa-solid fa-layer-group"></i></div>
+                </div>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -475,7 +623,7 @@ foreach ($ledger as &$l) {
                         <div class="mb-2">
                             <span class="text-[11px] font-bold text-emerald-600 block mb-1">หมวดหมู่รายรับ:</span>
                             <div class="flex flex-wrap gap-2">
-                                <?php foreach($inc_categories as $cat): ?>
+                                <?php foreach ($inc_categories as $cat): ?>
                                     <label class="text-[10px] flex items-center gap-1 cursor-pointer text-gray-600"><input type="checkbox" checked onchange="updateDailyChart()" class="d-filter-inc accent-emerald-500" value="<?= $cat ?>"> <?= $cat ?></label>
                                 <?php endforeach; ?>
                             </div>
@@ -483,7 +631,7 @@ foreach ($ledger as &$l) {
                         <div class="mb-2">
                             <span class="text-[11px] font-bold text-rose-600 block mb-1">หมวดหมู่รายจ่าย:</span>
                             <div class="flex flex-wrap gap-2">
-                                <?php foreach($categories as $cat): ?>
+                                <?php foreach ($categories as $cat): ?>
                                     <label class="text-[10px] flex items-center gap-1 cursor-pointer text-gray-600"><input type="checkbox" checked onchange="updateDailyChart()" class="d-filter-exp accent-rose-500" value="<?= $cat ?>"> <?= $cat ?></label>
                                 <?php endforeach; ?>
                             </div>
@@ -506,10 +654,13 @@ foreach ($ledger as &$l) {
                         <h3 class="text-sm font-bold text-gray-700 mb-3 flex justify-between"><span><i class="fa-solid fa-wallet text-emerald-500 mr-1"></i> <?= $e_inc ? 'แก้ไข' : 'เพิ่ม' ?>รายรับ</span><?php if ($e_inc): ?><a href="?month=<?= $month ?>" class="text-xs text-gray-400">ยกเลิก</a><?php endif; ?></h3>
                         <form method="POST" action="?month=<?= $month ?>" class="space-y-3 text-sm">
                             <input type="hidden" name="action" value="save_income"><input type="hidden" name="id" value="<?= $e_inc['id'] ?? ($old_post_data['id'] ?? '') ?>"><input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
-                            <div class="grid grid-cols-3 gap-2"><div class="col-span-2"><input type="text" name="title" value="<?= htmlspecialchars($e_inc['title'] ?? ($old_post_data['title'] ?? '')) ?>" placeholder="หัวข้อ" class="w-full px-3 py-2 border rounded-lg" required></div><div><input type="date" name="date" id="inc_date" value="<?= $e_inc['date'] ?? ($old_post_data['date'] ?? $def_d) ?>" class="w-full px-2 py-2 border rounded-lg text-xs font-semibold" required></div></div>
+                            <div class="grid grid-cols-3 gap-2">
+                                <div class="col-span-2"><input type="text" name="title" value="<?= htmlspecialchars($e_inc['title'] ?? ($old_post_data['title'] ?? '')) ?>" placeholder="หัวข้อ" class="w-full px-3 py-2 border rounded-lg" required></div>
+                                <div><input type="date" name="date" id="inc_date" value="<?= $e_inc['date'] ?? ($old_post_data['date'] ?? $def_d) ?>" class="w-full px-2 py-2 border rounded-lg text-xs font-semibold" required></div>
+                            </div>
                             <div class="grid grid-cols-2 gap-2">
                                 <select name="category" class="w-full px-3 py-2 border rounded-lg bg-white" required>
-                                    <?php foreach($inc_categories as $cat): ?><option value="<?= $cat ?>" <?= ($e_inc && isset($e_inc['category']) && $e_inc['category'] === $cat) || (isset($old_post_data['category']) && $old_post_data['category'] === $cat) ? 'selected' : '' ?>><?= $cat ?></option><?php endforeach; ?>
+                                    <?php foreach ($inc_categories as $cat): ?><option value="<?= $cat ?>" <?= ($e_inc && isset($e_inc['category']) && $e_inc['category'] === $cat) || (isset($old_post_data['category']) && $old_post_data['category'] === $cat) ? 'selected' : '' ?>><?= $cat ?></option><?php endforeach; ?>
                                 </select>
                                 <input type="number" step="0.01" name="amount" value="<?= $e_inc['amount'] ?? ($old_post_data['amount'] ?? '') ?>" placeholder="จำนวนเงิน" class="w-full px-3 py-2 border rounded-lg font-bold text-emerald-600" required>
                             </div>
@@ -521,10 +672,13 @@ foreach ($ledger as &$l) {
                         <h3 class="text-sm font-bold text-gray-700 mb-3 flex justify-between"><span><i class="fa-solid fa-basket-shopping text-rose-500 mr-1"></i> <?= $e_exp ? 'แก้ไข' : 'เพิ่ม' ?>รายจ่าย</span><?php if ($e_exp): ?><a href="?month=<?= $month ?>" class="text-xs text-gray-400">ยกเลิก</a><?php endif; ?></h3>
                         <form method="POST" action="?month=<?= $month ?>" class="space-y-3 text-sm">
                             <input type="hidden" name="action" value="save_expense"><input type="hidden" name="id" value="<?= $e_exp['id'] ?? ($old_post_data['id'] ?? '') ?>"><input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
-                            <div class="grid grid-cols-3 gap-2"><div class="col-span-2"><input type="text" name="title" value="<?= htmlspecialchars($e_exp['title'] ?? ($old_post_data['title'] ?? '')) ?>" placeholder="รายการ" class="w-full px-3 py-2 border rounded-lg" required></div><div><input type="date" name="date" id="exp_date" value="<?= $e_exp['date'] ?? ($old_post_data['date'] ?? $def_d) ?>" class="w-full px-2 py-2 border rounded-lg text-xs font-semibold" required></div></div>
+                            <div class="grid grid-cols-3 gap-2">
+                                <div class="col-span-2"><input type="text" name="title" value="<?= htmlspecialchars($e_exp['title'] ?? ($old_post_data['title'] ?? '')) ?>" placeholder="รายการ" class="w-full px-3 py-2 border rounded-lg" required></div>
+                                <div><input type="date" name="date" id="exp_date" value="<?= $e_exp['date'] ?? ($old_post_data['date'] ?? $def_d) ?>" class="w-full px-2 py-2 border rounded-lg text-xs font-semibold" required></div>
+                            </div>
                             <div class="grid grid-cols-2 gap-2">
                                 <select name="category" class="w-full px-3 py-2 border rounded-lg bg-white" required>
-                                    <?php foreach($categories as $cat): ?><option value="<?= $cat ?>" <?= ($e_exp && isset($e_exp['category']) && $e_exp['category'] === $cat) || (isset($old_post_data['category']) && $old_post_data['category'] === $cat) ? 'selected' : '' ?>><?= $cat ?></option><?php endforeach; ?>
+                                    <?php foreach ($categories as $cat): ?><option value="<?= $cat ?>" <?= ($e_exp && isset($e_exp['category']) && $e_exp['category'] === $cat) || (isset($old_post_data['category']) && $old_post_data['category'] === $cat) ? 'selected' : '' ?>><?= $cat ?></option><?php endforeach; ?>
                                 </select>
                                 <input type="number" step="0.01" name="amount" value="<?= $e_exp['amount'] ?? ($old_post_data['amount'] ?? '') ?>" placeholder="จำนวนเงิน" class="w-full px-3 py-2 border rounded-lg font-bold text-rose-600" required>
                             </div>
@@ -538,7 +692,10 @@ foreach ($ledger as &$l) {
                             <input type="hidden" name="action" value="save_rent"><input type="hidden" name="id" value="<?= $e_rent['id'] ?? ($old_post_data['id'] ?? '') ?>"><input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
                             <input type="text" name="name" value="<?= htmlspecialchars($e_rent['name'] ?? ($old_post_data['name'] ?? '')) ?>" placeholder="รายการ (เช่น ค่าเช่าตึก)" class="w-full px-3 py-2 border rounded-lg" required>
                             <div class="grid grid-cols-2 gap-2"><input type="number" step="0.01" name="amount" value="<?= $e_rent['amount'] ?? ($old_post_data['amount'] ?? '') ?>" placeholder="จำนวนเงิน" class="w-full px-3 py-2 border rounded-lg font-bold text-orange-600" required><select name="due_date" id="rent_due" class="w-full px-3 py-2 border rounded-lg" required><?php for ($i = 1; $i <= 31; $i++): ?><option value="<?= $i ?>" <?= ($e_rent && $e_rent['due_date'] == $i || (isset($old_post_data['due_date']) && $old_post_data['due_date'] == $i) || (!$e_rent && !isset($old_post_data['due_date']) && $i == $default_day)) ? 'selected' : '' ?>>ดีลวันที่ <?= $i ?></option><?php endfor; ?></select></div>
-                            <div class="grid grid-cols-2 gap-2"><div><label class="text-[10px] text-gray-500 block">เริ่มจ่ายเดือน:</label><input type="month" name="start_month" value="<?= $e_rent['start_month'] ?? ($old_post_data['start_month'] ?? $month) ?>" class="w-full px-3 py-2 border rounded-lg" required></div><div><label class="text-[10px] text-gray-500 block">จ่ายถึงเดือน:</label><input type="month" name="end_month" value="<?= $e_rent['end_month'] ?? ($old_post_data['end_month'] ?? date('Y-m', strtotime($month . ' +1 year'))) ?>" class="w-full px-3 py-2 border rounded-lg" required></div></div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div><label class="text-[10px] text-gray-500 block">เริ่มจ่ายเดือน:</label><input type="month" name="start_month" value="<?= $e_rent['start_month'] ?? ($old_post_data['start_month'] ?? $month) ?>" class="w-full px-3 py-2 border rounded-lg" required></div>
+                                <div><label class="text-[10px] text-gray-500 block">จ่ายถึงเดือน:</label><input type="month" name="end_month" value="<?= $e_rent['end_month'] ?? ($old_post_data['end_month'] ?? date('Y-m', strtotime($month . ' +1 year'))) ?>" class="w-full px-3 py-2 border rounded-lg" required></div>
+                            </div>
                             <button type="submit" class="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg font-medium">บันทึกค่าเช่า</button>
                         </form>
                     </div>
@@ -566,9 +723,12 @@ foreach ($ledger as &$l) {
                             <?php
                             for ($d = 1; $d <= 31; $d++):
                                 $c = $cal[$d] ?? [];
-                                $i = $c['incomes'] ?? []; $e = $c['expenses'] ?? []; $it = $c['items'] ?? []; $re = $c['rents'] ?? [];
+                                $i = $c['incomes'] ?? [];
+                                $e = $c['expenses'] ?? [];
+                                $it = $c['items'] ?? [];
+                                $re = $c['rents'] ?? [];
                                 $bc = 'border-gray-100 bg-gray-50/50';
-                                
+
                                 $has_unpaid = count(array_filter($it, fn($x) => $x['status'] !== 'จ่ายแล้ว')) > 0 || count(array_filter($re, fn($x) => $x['status'] !== 'จ่ายแล้ว')) > 0;
                                 if ($it || $re) $bc = !$has_unpaid ? 'border-emerald-300 bg-emerald-50/40' : 'border-rose-400 bg-rose-50/40 ring-1 ring-rose-300 animate-pulse';
                                 elseif ($i || $e) $bc = 'border-indigo-200 bg-white shadow-sm';
@@ -603,9 +763,18 @@ foreach ($ledger as &$l) {
                             </div>
                         </div>
                         <div class="grid grid-cols-3 gap-3 mb-4 text-center" id="daily-stats">
-                            <div class="bg-emerald-50 p-2 rounded-lg"><p class="text-[10px] text-gray-500">รายรับ</p><p id="d-inc" class="text-sm font-bold text-emerald-600">฿0</p></div>
-                            <div class="bg-rose-50 p-2 rounded-lg"><p class="text-[10px] text-gray-500">รายจ่าย</p><p id="d-exp" class="text-sm font-bold text-rose-600">฿0</p></div>
-                            <div class="bg-gray-50 p-2 rounded-lg"><p class="text-[10px] text-gray-500">คงเหลือ</p><p id="d-rem" class="text-sm font-bold text-gray-700">฿0</p></div>
+                            <div class="bg-emerald-50 p-2 rounded-lg">
+                                <p class="text-[10px] text-gray-500">รายรับ</p>
+                                <p id="d-inc" class="text-sm font-bold text-emerald-600">฿0</p>
+                            </div>
+                            <div class="bg-rose-50 p-2 rounded-lg">
+                                <p class="text-[10px] text-gray-500">รายจ่าย</p>
+                                <p id="d-exp" class="text-sm font-bold text-rose-600">฿0</p>
+                            </div>
+                            <div class="bg-gray-50 p-2 rounded-lg">
+                                <p class="text-[10px] text-gray-500">คงเหลือ</p>
+                                <p id="d-rem" class="text-sm font-bold text-gray-700">฿0</p>
+                            </div>
                         </div>
                         <div id="d-list" class="space-y-2 max-h-[400px] overflow-y-auto pr-1">
                             <p class="text-center text-xs text-gray-400 py-4">เลือกวันบนปฏิทิน</p>
@@ -621,14 +790,22 @@ foreach ($ledger as &$l) {
                         <div class="overflow-x-auto">
                             <table class="w-full text-left text-sm whitespace-nowrap">
                                 <thead class="bg-white text-gray-500 text-[11px] uppercase border-b">
-                                    <th class="p-3">รายการ</th><th class="p-3 text-center">ประเภท/งวด</th><th class="p-3">หนี้คงเหลือ</th><th class="p-3 text-center">ที่ต้องจ่าย</th><th class="p-3 text-center">สถานะ</th><th class="p-3 text-center">จัดการ</th>
+                                    <th class="p-3">รายการ</th>
+                                    <th class="p-3 text-center">ประเภท/งวด</th>
+                                    <th class="p-3">หนี้คงเหลือ</th>
+                                    <th class="p-3 text-center">ที่ต้องจ่าย</th>
+                                    <th class="p-3 text-center">สถานะ</th>
+                                    <th class="p-3 text-center">จัดการ</th>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100 text-gray-700">
-                                    <?php if (!$active_items && !$active_rents): ?><tr><td colspan="6" class="p-6 text-center text-gray-400">ไม่มีรายการ</td></tr><?php endif; ?>
-                                    
+                                    <?php if (!$active_items && !$active_rents): ?><tr>
+                                            <td colspan="6" class="p-6 text-center text-gray-400">ไม่มีรายการ</td>
+                                        </tr><?php endif; ?>
+
                                     <?php foreach ($active_rents as $rt): $st = $rt['status_by_month'][$month] ?? 'ค้างชำระ'; ?>
                                         <tr class="hover:bg-gray-50">
-                                            <td class="p-3 font-bold"><span class="text-[14px]">🏢</span> <?= $rt['name'] ?><div class="text-[10px] text-gray-400 mt-0.5">ดิววันที่ <?= $rt['due_date'] ?></div></td>
+                                            <td class="p-3 font-bold"><span class="text-[14px]">🏢</span> <?= $rt['name'] ?><div class="text-[10px] text-gray-400 mt-0.5">ดิววันที่ <?= $rt['due_date'] ?></div>
+                                            </td>
                                             <td class="p-3 text-center"><span class="bg-orange-50 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold border border-orange-100">รายเดือน</span></td>
                                             <td class="p-3 text-gray-400 text-xs font-bold">-</td>
                                             <td class="p-3 text-center font-bold text-orange-600">฿<?= number_format($rt['amount'], 2) ?></td>
@@ -643,7 +820,8 @@ foreach ($ledger as &$l) {
 
                                     <?php foreach ($active_items as $it): $st = $it['status_by_month'][$month] ?? 'ค้างชำระ'; ?>
                                         <tr class="hover:bg-gray-50">
-                                            <td class="p-3 font-bold"><span class="text-[14px]">📦</span> <?= $it['name'] ?><div class="text-[10px] text-gray-400 mt-0.5">ดิววันที่ <?= $it['due_date'] ?></div></td>
+                                            <td class="p-3 font-bold"><span class="text-[14px]">📦</span> <?= $it['name'] ?><div class="text-[10px] text-gray-400 mt-0.5">ดิววันที่ <?= $it['due_date'] ?></div>
+                                            </td>
                                             <td class="p-3 text-center"><span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold border border-indigo-100"><?= $it['current_installment_no'] ?>/<?= $it['total_months'] ?></span></td>
                                             <td class="p-3 text-rose-600 font-bold text-xs">฿<?= number_format($it['real_remaining_debt'], 2) ?></td>
                                             <td class="p-3 text-center font-bold text-indigo-600">฿<?= number_format($it['monthly_payment'], 2) ?></td>
@@ -669,11 +847,17 @@ foreach ($ledger as &$l) {
         const calData = <?= json_encode($cal) ?>;
         const ledgerData = <?= json_encode($ledger) ?>;
         const moStr = "<?= $month ?>";
-        let curDay = <?= $default_day ?>, fil = 'all';
+        let curDay = <?= $default_day ?>,
+            fil = 'all';
         let pdfType = 'month';
         const fNum = n => `฿${parseFloat(n).toLocaleString('th-TH',{minimumFractionDigits:2})}`;
-        
-        const chartColors = { incomes: ['#10b981', '#34d399', '#059669', '#6ee7b7', '#a7f3d0', '#047857'], expenses: ['#f43f5e', '#fb7185', '#e11d48', '#fda4af', '#be123c', '#9f1239', '#881337'], rents: '#f59e0b', items: '#6366f1' };
+
+        const chartColors = {
+            incomes: ['#10b981', '#34d399', '#059669', '#6ee7b7', '#a7f3d0', '#047857'],
+            expenses: ['#f43f5e', '#fb7185', '#e11d48', '#fda4af', '#be123c', '#9f1239', '#881337'],
+            rents: '#f59e0b',
+            items: '#6366f1'
+        };
 
         let mChartInstance = null;
         let dChartInstance = null;
@@ -706,32 +890,44 @@ foreach ($ledger as &$l) {
             submitBtn.innerHTML = `<i class="fa-solid fa-spinner animate-spin mr-1"></i> กำลังสร้างไฟล์...`;
             submitBtn.disabled = true;
 
-            let filteredLedger = []; let titlePeriod = ''; let fileName = `Ledger_Report_${moStr}`;
-            
+            let filteredLedger = [];
+            let titlePeriod = '';
+            let fileName = `Ledger_Report_${moStr}`;
+
             if (pdfType === 'month') {
-                filteredLedger = [...ledgerData]; titlePeriod = `ประจำเดือน ${moStr}`; fileName = `รายงานบัญชี_เดือน_${moStr}`;
+                filteredLedger = [...ledgerData];
+                titlePeriod = `ประจำเดือน ${moStr}`;
+                fileName = `รายงานบัญชี_เดือน_${moStr}`;
             } else if (pdfType === 'single') {
                 const targetDate = document.getElementById('pdf-date-start').value;
                 filteredLedger = ledgerData.filter(l => l.date === targetDate);
                 const dFormated = targetDate.split('-').reverse().join('-');
-                titlePeriod = `ประจำวันที่ ${targetDate.split('-').reverse().join('/')}`; fileName = `รายงานบัญชี_วันที่_${dFormated}`;
+                titlePeriod = `ประจำวันที่ ${targetDate.split('-').reverse().join('/')}`;
+                fileName = `รายงานบัญชี_วันที่_${dFormated}`;
             } else if (pdfType === 'range') {
                 const start = document.getElementById('pdf-range-start').value;
                 const end = document.getElementById('pdf-range-end').value;
                 filteredLedger = ledgerData.filter(l => l.date >= start && l.date <= end);
-                const dStart = start.split('-').reverse().join('-'); const dEnd = end.split('-').reverse().join('-');
-                titlePeriod = `ตั้งแต่วันที่ ${start.split('-').reverse().join('/')} ถึงวันที่ ${end.split('-').reverse().join('/')}`; fileName = `รายงานบัญชี_ช่วง_${dStart}_ถึง_${dEnd}`;
+                const dStart = start.split('-').reverse().join('-');
+                const dEnd = end.split('-').reverse().join('-');
+                titlePeriod = `ตั้งแต่วันที่ ${start.split('-').reverse().join('/')} ถึงวันที่ ${end.split('-').reverse().join('/')}`;
+                fileName = `รายงานบัญชี_ช่วง_${dStart}_ถึง_${dEnd}`;
             }
 
-            let sumInc = 0; let sumExp = 0; let currentBalance = 0; let html = '';
+            let sumInc = 0;
+            let sumExp = 0;
+            let currentBalance = 0;
+            let html = '';
 
             if (filteredLedger.length === 0) {
                 html = `<tr><td colspan="5" class="text-center" style="padding: 20px; color: #94a3b8;">ไม่มีข้อมูลในช่วงเวลาที่เลือก</td></tr>`;
             } else {
                 filteredLedger.forEach(l => {
-                    sumInc += parseFloat(l.inc); sumExp += parseFloat(l.exp);
+                    sumInc += parseFloat(l.inc);
+                    sumExp += parseFloat(l.exp);
                     currentBalance += parseFloat(l.inc) - parseFloat(l.exp);
-                    const dateArr = l.date.split('-'); const showDate = `${dateArr[2]}/${dateArr[1]}/${dateArr[0]}`;
+                    const dateArr = l.date.split('-');
+                    const showDate = `${dateArr[2]}/${dateArr[1]}/${dateArr[0]}`;
                     html += `<tr><td class="text-center">${showDate}</td><td>${l.title}</td><td class="text-right" style="color: #059669;">${l.inc > 0 ? parseFloat(l.inc).toLocaleString('th-TH',{minimumFractionDigits:2}) : '-'}</td><td class="text-right" style="color: #e11d48;">${l.exp > 0 ? parseFloat(l.exp).toLocaleString('th-TH',{minimumFractionDigits:2}) : '-'}</td><td class="text-right" style="font-weight: bold; color: #1e293b;">${currentBalance.toLocaleString('th-TH',{minimumFractionDigits:2})}</td></tr>`;
                 });
             }
@@ -741,11 +937,28 @@ foreach ($ledger as &$l) {
             document.getElementById('print-ledger-body').innerHTML = html;
 
             const element = document.getElementById('pdf-render-area');
-            const opt = { margin: 15, filename: `${fileName}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
+            const opt = {
+                margin: 15,
+                filename: `${fileName}.pdf`,
+                image: {
+                    type: 'jpeg',
+                    quality: 0.98
+                },
+                html2canvas: {
+                    scale: 2,
+                    useCORS: true
+                },
+                jsPDF: {
+                    unit: 'mm',
+                    format: 'a4',
+                    orientation: 'portrait'
+                }
+            };
 
             html2pdf().set(opt).from(element).save().then(() => {
                 submitBtn.innerHTML = `<i class="fa-solid fa-download mr-1"></i> ดาวน์โหลด PDF`;
-                submitBtn.disabled = false; togglePdfModal(false);
+                submitBtn.disabled = false;
+                togglePdfModal(false);
             });
         }
 
@@ -753,23 +966,94 @@ foreach ($ledger as &$l) {
             const mCtx = document.getElementById('mChart').getContext('2d');
             const incTotal = <?= $t_inc ?>;
             const expTotal = <?= $t_exp_mo ?>;
-            let data = [], labels = [], colors = [];
-            if (incTotal > 0) { labels.push('รายรับรวม'); data.push(incTotal); colors.push('#10b981'); }
-            if (expTotal > 0) { labels.push('รายจ่ายรวม'); data.push(expTotal); colors.push('#f43f5e'); }
-            if (data.length === 0) {
-                mChartInstance = new Chart(mCtx, { type: 'doughnut', data: { labels: ['ไม่มีข้อมูล'], datasets: [{ data: [1], backgroundColor: ['#e2e8f0'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: { enabled: false } } } }); return;
+            let data = [],
+                labels = [],
+                colors = [];
+            if (incTotal > 0) {
+                labels.push('รายรับรวม');
+                data.push(incTotal);
+                colors.push('#10b981');
             }
-            mChartInstance = new Chart(mCtx, { type: 'doughnut', data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderWidth: 2, borderColor: '#ffffff' }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Sarabun' }, boxWidth: 12 } } } } });
+            if (expTotal > 0) {
+                labels.push('รายจ่ายรวม');
+                data.push(expTotal);
+                colors.push('#f43f5e');
+            }
+            if (data.length === 0) {
+                mChartInstance = new Chart(mCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['ไม่มีข้อมูล'],
+                        datasets: [{
+                            data: [1],
+                            backgroundColor: ['#e2e8f0'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            tooltip: {
+                                enabled: false
+                            }
+                        }
+                    }
+                });
+                return;
+            }
+            mChartInstance = new Chart(mCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors,
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: {
+                                    family: 'Sarabun'
+                                },
+                                boxWidth: 12
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         function updateDailyChart() {
-            let state = { incomes: {}, expenses: {}, rents: false, items: false };
+            let state = {
+                incomes: {},
+                expenses: {},
+                rents: false,
+                items: false
+            };
             document.querySelectorAll(`.d-filter-inc`).forEach(cb => state.incomes[cb.value] = cb.checked);
             document.querySelectorAll(`.d-filter-exp`).forEach(cb => state.expenses[cb.value] = cb.checked);
             state.rents = document.getElementById('d-filter-rent')?.checked;
             state.items = document.getElementById('d-filter-item')?.checked;
 
-            let dData = { labels: [], values: [], colors: [] }; let dSummary = { inc: {}, exp: {}, rent: 0, item: 0 };
+            let dData = {
+                labels: [],
+                values: [],
+                colors: []
+            };
+            let dSummary = {
+                inc: {},
+                exp: {},
+                rent: 0,
+                item: 0
+            };
 
             for (let d in calData) {
                 if (parseInt(d) !== curDay) continue;
@@ -781,40 +1065,116 @@ foreach ($ledger as &$l) {
             }
 
             let cIdx = 0;
-            for (let cat in dSummary.inc) { if (state.incomes[cat] && dSummary.inc[cat] > 0) { dData.labels.push(`รับ: ${cat}`); dData.values.push(dSummary.inc[cat]); dData.colors.push(chartColors.incomes[cIdx % chartColors.incomes.length]); cIdx++; } }
+            for (let cat in dSummary.inc) {
+                if (state.incomes[cat] && dSummary.inc[cat] > 0) {
+                    dData.labels.push(`รับ: ${cat}`);
+                    dData.values.push(dSummary.inc[cat]);
+                    dData.colors.push(chartColors.incomes[cIdx % chartColors.incomes.length]);
+                    cIdx++;
+                }
+            }
             cIdx = 0;
-            for (let cat in dSummary.exp) { if (state.expenses[cat] && dSummary.exp[cat] > 0) { dData.labels.push(`จ่าย: ${cat}`); dData.values.push(dSummary.exp[cat]); dData.colors.push(chartColors.expenses[cIdx % chartColors.expenses.length]); cIdx++; } }
-            if (state.rents && dSummary.rent > 0) { dData.labels.push(`ค่าเช่า`); dData.values.push(dSummary.rent); dData.colors.push(chartColors.rents); }
-            if (state.items && dSummary.item > 0) { dData.labels.push(`ผ่อนชำระ`); dData.values.push(dSummary.item); dData.colors.push(chartColors.items); }
+            for (let cat in dSummary.exp) {
+                if (state.expenses[cat] && dSummary.exp[cat] > 0) {
+                    dData.labels.push(`จ่าย: ${cat}`);
+                    dData.values.push(dSummary.exp[cat]);
+                    dData.colors.push(chartColors.expenses[cIdx % chartColors.expenses.length]);
+                    cIdx++;
+                }
+            }
+            if (state.rents && dSummary.rent > 0) {
+                dData.labels.push(`ค่าเช่า`);
+                dData.values.push(dSummary.rent);
+                dData.colors.push(chartColors.rents);
+            }
+            if (state.items && dSummary.item > 0) {
+                dData.labels.push(`ผ่อนชำระ`);
+                dData.values.push(dSummary.item);
+                dData.colors.push(chartColors.items);
+            }
 
             document.getElementById('dChartTitle').innerText = `วันที่ ${curDay}`;
             const dCtx = document.getElementById('dChart').getContext('2d');
             if (dChartInstance) dChartInstance.destroy();
-            
+
             if (dData.values.length === 0) {
-                dChartInstance = new Chart(dCtx, { type: 'doughnut', data: { labels: ['ไม่มีข้อมูล'], datasets: [{ data: [1], backgroundColor: ['#e2e8f0'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: { enabled: false }, legend: { display: false } } } });
+                dChartInstance = new Chart(dCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['ไม่มีข้อมูล'],
+                        datasets: [{
+                            data: [1],
+                            backgroundColor: ['#e2e8f0'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            tooltip: {
+                                enabled: false
+                            },
+                            legend: {
+                                display: false
+                            }
+                        }
+                    }
+                });
             } else {
-                dChartInstance = new Chart(dCtx, { type: 'doughnut', data: { labels: dData.labels, datasets: [{ data: dData.values, backgroundColor: dData.colors, borderWidth: 2, borderColor: '#ffffff' }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { family: 'Sarabun' }, boxWidth: 10 } } } } });
+                dChartInstance = new Chart(dCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: dData.labels,
+                        datasets: [{
+                            data: dData.values,
+                            backgroundColor: dData.colors,
+                            borderWidth: 2,
+                            borderColor: '#ffffff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    font: {
+                                        family: 'Sarabun'
+                                    },
+                                    boxWidth: 10
+                                }
+                            }
+                        }
+                    }
+                });
             }
         }
 
-        window.onload = () => { selectDay(curDay, false); drawMonthlyChart(); };
+        window.onload = () => {
+            selectDay(curDay, false);
+            drawMonthlyChart();
+        };
 
         function searchData() {
             let kw = document.getElementById('searchInput').value.toLowerCase();
-            if(!kw) {
-                document.getElementById('daily-stats').style.display = 'grid'; document.getElementById('filter-buttons').style.display = 'flex';
-                render(); return;
+            if (!kw) {
+                document.getElementById('daily-stats').style.display = 'grid';
+                document.getElementById('filter-buttons').style.display = 'flex';
+                render();
+                return;
             }
             document.getElementById('list-title').innerHTML = `<i class="fa-solid fa-magnifying-glass text-indigo-600"></i> ผลการค้นหา "${kw}"`;
-            document.getElementById('daily-stats').style.display = 'none'; document.getElementById('filter-buttons').style.display = 'none';
+            document.getElementById('daily-stats').style.display = 'none';
+            document.getElementById('filter-buttons').style.display = 'none';
             let html = '';
-            for(let d in calData) {
+            for (let d in calData) {
                 let day = calData[d];
-                if(day.incomes) day.incomes.filter(x => x.title.toLowerCase().includes(kw) || (x.category && x.category.toLowerCase().includes(kw))).forEach(x => html += getRowHtml('income', x, d));
-                if(day.expenses) day.expenses.filter(x => x.title.toLowerCase().includes(kw) || (x.category && x.category.toLowerCase().includes(kw))).forEach(x => html += getRowHtml('expense', x, d));
-                if(day.rents) day.rents.filter(x => x.name.toLowerCase().includes(kw)).forEach(x => html += getRowHtml('rent', x, d));
-                if(day.items) day.items.filter(x => x.name.toLowerCase().includes(kw)).forEach(x => html += getRowHtml('item', x, d));
+                if (day.incomes) day.incomes.filter(x => x.title.toLowerCase().includes(kw) || (x.category && x.category.toLowerCase().includes(kw))).forEach(x => html += getRowHtml('income', x, d));
+                if (day.expenses) day.expenses.filter(x => x.title.toLowerCase().includes(kw) || (x.category && x.category.toLowerCase().includes(kw))).forEach(x => html += getRowHtml('expense', x, d));
+                if (day.rents) day.rents.filter(x => x.name.toLowerCase().includes(kw)).forEach(x => html += getRowHtml('rent', x, d));
+                if (day.items) day.items.filter(x => x.name.toLowerCase().includes(kw)).forEach(x => html += getRowHtml('item', x, d));
             }
             document.getElementById('d-list').innerHTML = html || `<p class="text-center text-xs text-gray-400 py-6">ไม่พบข้อมูลที่ตรงกับ "${kw}"</p>`;
         }
@@ -829,33 +1189,53 @@ foreach ($ledger as &$l) {
         }
 
         function selectDay(d, isUserClick = false) {
-            curDay = d; document.querySelectorAll('.calendar-day-btn').forEach(b => b.classList.remove('active-day'));
+            curDay = d;
+            document.querySelectorAll('.calendar-day-btn').forEach(b => b.classList.remove('active-day'));
             document.getElementById(`cal-day-${d}`)?.classList.add('active-day');
             if (isUserClick) {
-                const dd = String(d).padStart(2, '0'); const fullDate = `${moStr}-${dd}`;
+                const dd = String(d).padStart(2, '0');
+                const fullDate = `${moStr}-${dd}`;
                 ['inc_date', 'exp_date', 'item_due', 'rent_due'].forEach(id => {
-                    let el = document.getElementById(id); if (el) { el.value = id.includes('due') ? d : fullDate; flashEffect(el); }
+                    let el = document.getElementById(id);
+                    if (el) {
+                        el.value = id.includes('due') ? d : fullDate;
+                        flashEffect(el);
+                    }
                 });
-                document.getElementById('searchInput').value = ''; document.getElementById('daily-stats').style.display = 'grid'; document.getElementById('filter-buttons').style.display = 'flex';
+                document.getElementById('searchInput').value = '';
+                document.getElementById('daily-stats').style.display = 'grid';
+                document.getElementById('filter-buttons').style.display = 'flex';
             }
-            render(); updateDailyChart();
+            render();
+            updateDailyChart();
         }
 
-        function flashEffect(el) { el.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-50'); setTimeout(() => el.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-50'), 400); }
+        function flashEffect(el) {
+            el.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-50');
+            setTimeout(() => el.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-50'), 400);
+        }
 
         function setFil(t) {
             fil = t;
             ['all', 'incomes', 'expenses', 'rents', 'items'].forEach(k => {
                 const btn = document.getElementById(`fil-${k}`);
-                if(btn) btn.className = k === t ? "px-2 py-1 rounded-md bg-white text-indigo-600 shadow-sm border border-gray-200" : "px-2 py-1 rounded-md hover:bg-gray-200/60 transition-all text-gray-500";
+                if (btn) btn.className = k === t ? "px-2 py-1 rounded-md bg-white text-indigo-600 shadow-sm border border-gray-200" : "px-2 py-1 rounded-md hover:bg-gray-200/60 transition-all text-gray-500";
             });
             render();
         }
 
         function render() {
             document.getElementById('list-title').innerHTML = `<i class="fa-solid fa-list text-indigo-600"></i> สรุปวันที่ <span id="sel-day" class="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg">${curDay}</span>`;
-            const d = calData[curDay] || { incomes: [], expenses: [], items: [], rents: [] };
-            const i = d.incomes || [], e = d.expenses || [], it = d.items || [], re = d.rents || [];
+            const d = calData[curDay] || {
+                incomes: [],
+                expenses: [],
+                items: [],
+                rents: []
+            };
+            const i = d.incomes || [],
+                e = d.expenses || [],
+                it = d.items || [],
+                re = d.rents || [];
 
             const tI = i.reduce((s, c) => s + parseFloat(c.amount), 0);
             const tE = e.reduce((s, c) => s + parseFloat(c.amount), 0) + it.reduce((s, c) => s + parseFloat(c.amount), 0) + re.reduce((s, c) => s + parseFloat(c.amount), 0);
@@ -917,10 +1297,17 @@ foreach ($ledger as &$l) {
                 </body>
                 </html>
             `;
-            let blob = new Blob([tableHTML], { type: 'application/vnd.ms-excel' });
-            let link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `Ledger_Report_${moStr}.xls`;
-            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            let blob = new Blob([tableHTML], {
+                type: 'application/vnd.ms-excel'
+            });
+            let link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `Ledger_Report_${moStr}.xls`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
     </script>
 </body>
+
 </html>
