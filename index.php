@@ -75,7 +75,7 @@ function getCategories()
 {
     define('CATEGORIES_FILE', 'categories.json');
     $defaultCategories = [
-        'income_categories' => ['เงินค่าประกัน', 'เงินค่าห้อง', 'ขายของ', 'ดอกเบี้ย/ปันผล', 'เงินให้เปล่า', 'อื่นๆ'],
+        'income_categories' => ['เงินค่าประกัน', 'เงินค่าห้อง', 'ขายของ', 'ดอกเบี้ย/ปันผล', 'เงินให้เปล่า','เงินยืม', 'อื่นๆ'],
         'expense_categories' => ['วัสดุและอุปกรณ์', 'ค่าไฟ', 'ค่าน้ำ', 'บิลและสาธารณูปโภค', 'สุขภาพ', 'ค่าอาหาร', 'อื่นๆ']
     ];
     if (!file_exists(CATEGORIES_FILE)) {
@@ -727,11 +727,35 @@ unset($l);
                                 $e = $c['expenses'] ?? [];
                                 $it = $c['items'] ?? [];
                                 $re = $c['rents'] ?? [];
-                                $bc = 'border-gray-100 bg-gray-50/50';
 
+                                // Calculate totals for the day to determine the border color
+                                $daily_income = array_sum(array_column($i, 'amount'));
+                                $daily_expense_base = array_sum(array_column($e, 'amount'));
+                                $daily_expense_rent = array_sum(array_column($re, 'amount'));
+                                $daily_expense_item = array_sum(array_column($it, 'amount'));
+                                $daily_total_expense = $daily_expense_base + $daily_expense_rent + $daily_expense_item;
+
+                                $bc = 'border-gray-100 bg-gray-50/50'; // Default style for empty days
+
+                                if ($i || $e || $it || $re) { // Check if there is any activity on this day
+                                    if ($daily_income > $daily_total_expense) {
+                                        // Net income is positive, make it green
+                                        $bc = 'border-emerald-400 bg-emerald-50/60';
+                                    } elseif ($daily_total_expense > $daily_income) {
+                                        // Net income is negative, make it red
+                                        $bc = 'border-rose-400 bg-rose-50/60';
+                                    } else {
+                                        // Net income is zero, use a neutral color
+                                        $bc = 'border-indigo-200 bg-white shadow-sm';
+                                    }
+                                }
+
+                                // Check for unpaid items to add a pulsing effect for high visibility
                                 $has_unpaid = count(array_filter($it, fn($x) => $x['status'] !== 'จ่ายแล้ว')) > 0 || count(array_filter($re, fn($x) => $x['status'] !== 'จ่ายแล้ว')) > 0;
-                                if ($it || $re) $bc = !$has_unpaid ? 'border-emerald-300 bg-emerald-50/40' : 'border-rose-400 bg-rose-50/40 ring-1 ring-rose-300 animate-pulse';
-                                elseif ($i || $e) $bc = 'border-indigo-200 bg-white shadow-sm';
+                                if ($has_unpaid) {
+                                    // If there are unpaid items, add a pulsing red ring.
+                                    $bc .= ' ring-1 ring-rose-300 animate-pulse';
+                                }
                             ?>
                                 <div id="cal-day-<?= $d ?>" onclick="selectDay(<?= $d ?>, true)" class="calendar-day-btn relative border rounded-lg p-2 flex flex-col items-center min-h-[65px] transition-all cursor-pointer hover:border-indigo-500 <?= $bc ?>">
                                     <div class="text-xs font-bold text-gray-700"><?= $d ?></div>
