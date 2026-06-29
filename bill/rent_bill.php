@@ -8,6 +8,9 @@ date_default_timezone_set('Asia/Bangkok');
 $now = new DateTimeImmutable();
 
 define('RENT_BILL_FILE', '../Rent_bil.json');
+define('WATER_BILL_AMOUNT', 200.0);
+define('ELECTRICITY_RATE', 7);
+
 
 // Helper functions for data
 function getRentBills() {
@@ -21,11 +24,28 @@ function saveRentBills($bills) {
     return @file_put_contents(RENT_BILL_FILE, json_encode($bills, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 }
 
+function findBillIndexById($bills, $id) {
+    if (empty($id) || empty($bills)) return false;
+    $bill_ids = array_column($bills, 'id');
+    return array_search($id, $bill_ids);
+}
+
 $month = $_GET['month'] ?? $now->format('Y-m');
 $prev_mo = date('Y-m', strtotime($month . " -1 month"));
 $next_mo = date('Y-m', strtotime($month . " +1 month"));
 
 $all_bills = getRentBills();
+
+// Prepare previous month's data for auto-fill feature
+$prev_month_bills = array_filter($all_bills, fn($b) => $b['month'] === $prev_mo);
+$prev_month_data_for_js = [];
+foreach ($prev_month_bills as $bill) {
+    // Use room number as key for easy JS lookup
+    $prev_month_data_for_js[$bill['room_number']] = [
+        'rent_amount' => $bill['rent_amount'],
+        'last_meter' => $bill['current_electric_meter']
+    ];
+}
 
 // Handle edit request
 $bill_to_edit = null;
@@ -54,9 +74,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'save_bill') {
 
     // Basic validation
     if (!empty($room_number) && $rent_amount > 0 && $current_meter >= $prev_meter) {
-        $water_bill = 200.0;
+        $water_bill = WATER_BILL_AMOUNT;
         $electric_units = $current_meter - $prev_meter;
-        $electricity_cost = $electric_units * 7;
+        $electricity_cost = $electric_units * ELECTRICITY_RATE;
         $total_amount = $rent_amount + $water_bill + $electricity_cost;
 
         $new_bill = [
@@ -75,20 +95,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'save_bill') {
             'created_at' => date('Y-m-d H:i:s')
         ];
 
-        $found = false;
-        foreach ($all_bills as &$bill) {
-            if ($bill['id'] === $id) {
-                // Preserve original status and creation date on edit
-                $new_bill['status'] = $bill['status'];
-                $new_bill['created_at'] = $bill['created_at'];
-                $bill = $new_bill;
-                $found = true;
-                break;
-            }
-        }
-        unset($bill);
+        $key_to_update = findBillIndexById($all_bills, $id);
 
-        if (!$found) {
+        if ($key_to_update !== false) {
+            // Preserve original status and creation date on edit
+            $new_bill['status'] = $all_bills[$key_to_update]['status'];
+            $new_bill['created_at'] = $all_bills[$key_to_update]['created_at'];
+            $all_bills[$key_to_update] = $new_bill;
+        } else {
             $all_bills[] = $new_bill;
         }
 
@@ -106,13 +120,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'save_bill') {
 if ($action && isset($_GET['id'])) {
     $id = $_GET['id'];
     if ($action === 'toggle_status') {
-        foreach ($all_bills as &$bill) {
-            if ($bill['id'] === $id) {
-                $bill['status'] = ($bill['status'] === 'จ่ายแล้ว') ? 'ยังไม่จ่าย' : 'จ่ายแล้ว';
-                break;
-            }
+        $key = findBillIndexById($all_bills, $id);
+        if ($key !== false) {
+            $all_bills[$key]['status'] = ($all_bills[$key]['status'] === 'จ่ายแล้ว') ? 'ยังไม่จ่าย' : 'จ่ายแล้ว';
         }
-        unset($bill);
     } elseif ($action === 'delete_bill') {
         $all_bills = array_values(array_filter($all_bills, fn($b) => $b['id'] !== $id));
     }
@@ -125,21 +136,14 @@ if ($action && isset($_GET['id'])) {
 $bills_for_month = array_filter($all_bills, fn($b) => $b['month'] === $month);
 usort($bills_for_month, fn($a, $b) => strcmp($a['room_number'], $b['room_number']));
 
-$paid_rooms_count = 0;
-$total_rent_income = 0;
-$total_electric_income = 0;
-$total_utility_income = 0; // water + electric
+// Calculate summaries more concisely
+$paid_bills = array_filter($bills_for_month, fn($b) => $b['status'] === 'จ่ายแล้ว');
 
-foreach ($bills_for_month as $bill) {
-    if ($bill['status'] === 'จ่ายแล้ว') {
-        $paid_rooms_count++;
-        $total_rent_income += $bill['rent_amount'];
-        $total_electric_income += $bill['electricity_cost'];
-        $total_utility_income += $bill['water_bill'] + $bill['electricity_cost'];
-    }
-}
-
-$total_income_from_paid = $total_rent_income + $total_utility_income;
+$paid_rooms_count = count($paid_bills);
+$total_rent_income = array_sum(array_column($paid_bills, 'rent_amount'));
+$total_electric_income = array_sum(array_column($paid_bills, 'electricity_cost'));
+$total_water_income = array_sum(array_column($paid_bills, 'water_bill'));
+$total_income_from_paid = $total_rent_income + $total_water_income + $total_electric_income;
 
 // Check for error message
 $error_message = '';
@@ -211,7 +215,7 @@ if (isset($_SESSION['error_message'])) {
                     
                     <div><label class="font-medium">เลขห้อง</label><input type="text" name="room_number" value="<?= htmlspecialchars($bill_to_edit['room_number'] ?? '') ?>" placeholder="เช่น 101" class="w-full mt-1 px-3 py-2 border rounded-lg" required></div>
                     <div><label class="font-medium">ค่าเช่าห้อง</label><input type="number" step="0.01" name="rent_amount" id="rent_amount" value="<?= $bill_to_edit['rent_amount'] ?? '' ?>" placeholder="เช่น 5000" class="w-full mt-1 px-3 py-2 border rounded-lg" required></div>
-                    <div><label class="font-medium">ค่าน้ำ</label><input type="text" value="200.00" class="w-full mt-1 px-3 py-2 border rounded-lg bg-gray-100" readonly></div>
+                    <div><label class="font-medium">ค่าน้ำ</label><input type="text" value="<?= number_format(WATER_BILL_AMOUNT, 2) ?>" class="w-full mt-1 px-3 py-2 border rounded-lg bg-gray-100" readonly></div>
                     
                     <div class="grid grid-cols-2 gap-3">
                         <div><label class="font-medium">มิเตอร์ไฟ (ก่อน)</label><input type="number" step="0.01" name="prev_meter" id="prev_meter" value="<?= $bill_to_edit['prev_electric_meter'] ?? '' ?>" placeholder="หน่วยเก่า" class="w-full mt-1 px-3 py-2 border rounded-lg" required></div>
@@ -281,8 +285,12 @@ if (isset($_SESSION['error_message'])) {
     </div>
 
     <script>
+        // Data from previous month for auto-fill, generated by PHP
+        const prevMonthData = <?= json_encode($prev_month_data_for_js, JSON_UNESCAPED_UNICODE) ?>;
+
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('rent-form');
+            const roomNumberEl = document.querySelector('input[name="room_number"]');
             const rentAmountEl = document.getElementById('rent_amount');
             const prevMeterEl = document.getElementById('prev_meter');
             const currentMeterEl = document.getElementById('current_meter');
@@ -294,18 +302,18 @@ if (isset($_SESSION['error_message'])) {
                 const prevMeter = parseFloat(prevMeterEl.value) || 0;
                 const currentMeter = parseFloat(currentMeterEl.value) || 0;
                 
-                const water = 200;
+                const water = <?= WATER_BILL_AMOUNT ?>;
                 let electricity = 0;
                 let units = 0;
 
                 if (currentMeter > prevMeter) {
                     units = currentMeter - prevMeter;
-                    electricity = units * 7;
+                    electricity = units * <?= ELECTRICITY_RATE ?>;
                 }
 
                 // Update electric calculation summary
                 if (units > 0) {
-                    electricCalcEl.innerHTML = `ใช้ไป: <span class="font-bold">${units.toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span> x 7 = <span class="font-bold text-amber-700">฿${electricity.toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                    electricCalcEl.innerHTML = `ใช้ไป: <span class="font-bold">${units.toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span> หน่วย x <?= ELECTRICITY_RATE ?> = <span class="font-bold text-amber-700">฿${electricity.toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
                     electricCalcEl.classList.remove('hidden');
                 } else {
                     electricCalcEl.classList.add('hidden');
@@ -315,6 +323,23 @@ if (isset($_SESSION['error_message'])) {
                 const total = rent + water + electricity;
                 totalSummaryEl.textContent = '฿' + total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             }
+
+            // Auto-fill logic when room number is entered and the field loses focus
+            roomNumberEl.addEventListener('change', function() {
+                const roomNumber = this.value.trim();
+                const billData = prevMonthData[roomNumber];
+                const isEditing = document.querySelector('input[name="id"]').value !== '';
+
+                // Auto-fill only if data exists for the room and we are not in edit mode
+                if (billData && !isEditing) {
+                    rentAmountEl.value = billData.rent_amount;
+                    prevMeterEl.value = billData.last_meter;
+                    
+                    // Trigger calculation and focus on the next logical field for quick entry
+                    calculateAll();
+                    currentMeterEl.focus();
+                }
+            });
 
             form.addEventListener('input', calculateAll);
             calculateAll(); // Initial calculation on page load (for edit mode)

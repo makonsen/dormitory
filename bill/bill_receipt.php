@@ -11,14 +11,10 @@ if (!$bill_id) {
 }
 
 $all_bills = file_exists(RENT_BILL_FILE) ? json_decode(file_get_contents(RENT_BILL_FILE), true) : [];
-$bill = null;
-foreach ($all_bills as $b) {
-    if ($b['id'] === $bill_id) {
-        $bill = $b;
-        break;
-    }
-}
-
+// Find the bill more efficiently
+$bill_key = !empty($all_bills) ? array_search($bill_id, array_column($all_bills, 'id')) : false;
+$bill = ($bill_key !== false) ? $all_bills[$bill_key] : null;
+ 
 if (!$bill) {
     die('ไม่พบบิลที่ระบุ');
 }
@@ -197,11 +193,12 @@ $thai_year = (int)$s_yr + 543;
             button.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>กำลังสร้าง...';
             button.disabled = true;
 
-            console.log('Starting PDF generation with options:', opt);
+            console.log('Starting PDF generation...');
 
-            // ใช้ Promise wrapper เพื่อจัดการ timeout ป้องกันการค้าง
+            // This Promise wrapper handles timeouts to prevent the UI from freezing
+            // if PDF generation takes too long (e.g., due to network issues loading fonts).
             const generationPromise = new Promise((resolve, reject) => {
-                const timeoutId = setTimeout(() => {
+                const timeoutId = setTimeout(() => { // Set a 15-second timeout
                     reject(new Error('การสร้าง PDF ใช้เวลานานเกินไป (15 วินาที) อาจมีปัญหาในการโหลดทรัพยากรภายนอกเช่นฟอนต์'));
                 }, 15000);
 
@@ -218,6 +215,7 @@ $thai_year = (int)$s_yr + 543;
 
             generationPromise
                 .then((pdfBlob) => {
+                    // Step 1: PDF is created as a "blob" (a file-like object in memory).
                     console.log('PDF Blob created successfully.');
                     const url = URL.createObjectURL(pdfBlob);
                     const a = document.createElement('a');
@@ -227,16 +225,19 @@ $thai_year = (int)$s_yr + 543;
                     document.body.appendChild(a);
                     a.click();
 
+                    // Step 2: Clean up the temporary URL and link element.
                     URL.revokeObjectURL(url);
                     document.body.removeChild(a);
                     console.log('Download triggered.');
                 })
                 .catch((err) => {
+                    // Step 3 (Error): If anything goes wrong, log it and alert the user.
                     console.error("PDF generation failed:", err);
                     alert("เกิดข้อผิดพลาดในการสร้าง PDF: " + err.message + "\nกรุณาตรวจสอบ Console (กด F12) สำหรับข้อมูลเพิ่มเติม และลองใหม่อีกครั้ง");
                 })
                 .finally(() => {
-                    // คืนค่าสไตล์และสถานะของปุ่มให้เหมือนเดิมไม่ว่าจะสำเร็จหรือล้มเหลว
+                    // Step 4 (Finally): Always restore the button to its original state,
+                    // whether the process succeeded or failed.
                     element.style.margin = originalMargin;
                     element.style.boxShadow = originalShadow;
                     button.innerHTML = '<i class="fa-solid fa-download mr-2"></i>ดาวน์โหลดใบเสร็จ';
