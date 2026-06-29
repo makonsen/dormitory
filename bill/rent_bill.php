@@ -8,6 +8,7 @@ date_default_timezone_set('Asia/Bangkok');
 $now = new DateTimeImmutable();
 
 define('RENT_BILL_FILE', '../Rent_bil.json');
+define('MAIN_DATA_FILE', '../data.json');
 define('WATER_BILL_AMOUNT', 200.0);
 define('ELECTRICITY_RATE', 7);
 
@@ -22,6 +23,26 @@ function getRentBills() {
 
 function saveRentBills($bills) {
     return @file_put_contents(RENT_BILL_FILE, json_encode($bills, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+}
+
+// Helper functions for main data file (data.json)
+function getMainData() {
+    if (!file_exists(MAIN_DATA_FILE)) {
+        return ['incomes' => [], 'expenses' => [], 'items' => [], 'rents' => []];
+    }
+    $jsonData = @file_get_contents(MAIN_DATA_FILE);
+    $data = json_decode($jsonData, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        return ['incomes' => [], 'expenses' => [], 'items' => [], 'rents' => []];
+    }
+    $data = is_array($data) ? $data : [];
+    $data += ['incomes' => [], 'expenses' => [], 'items' => [], 'rents' => []];
+    return $data;
+}
+
+function saveMainData($data) {
+    $jsonData = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    return @file_put_contents(MAIN_DATA_FILE, $jsonData);
 }
 
 function findBillIndexById($bills, $id) {
@@ -174,15 +195,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'create_all_bills') {
 
 if ($action && isset($_GET['id'])) {
     $id = $_GET['id'];
+    $main_data = getMainData(); // Load main accounting data
+
     if ($action === 'toggle_status') {
         $key = findBillIndexById($all_bills, $id);
         if ($key !== false) {
-            $all_bills[$key]['status'] = ($all_bills[$key]['status'] === 'จ่ายแล้ว') ? 'ยังไม่จ่าย' : 'จ่ายแล้ว';
+            $bill = $all_bills[$key];
+            $is_currently_paid = $bill['status'] === 'จ่ายแล้ว';
+
+            if (!$is_currently_paid) { // Action: Mark as PAID
+                // Add income record to the main accounting system
+                $new_income = [
+                    'id' => uniqid('inc_'),
+                    'title' => "รายรับค่าเช่าห้อง {$bill['room_number']} ({$bill['month']})",
+                    'amount' => $bill['total_amount'],
+                    'date' => date('Y-m-d'), // Use today's date for the income record
+                    'month' => date('Y-m'),
+                    'category' => 'เงินค่าห้อง',
+                    'source_bill_id' => $bill['id'] // Link to the source bill
+                ];
+                $main_data['incomes'][] = $new_income;
+                $all_bills[$key]['status'] = 'จ่ายแล้ว';
+            } else { // Action: Mark as UNPAID
+                // Remove the corresponding income record from the main accounting system
+                $main_data['incomes'] = array_values(array_filter($main_data['incomes'], fn($inc) => ($inc['source_bill_id'] ?? null) !== $bill['id']));
+                $all_bills[$key]['status'] = 'ยังไม่จ่าย';
+            }
         }
     } elseif ($action === 'delete_bill') {
+        $key = findBillIndexById($all_bills, $id);
+        if ($key !== false) {
+            $bill = $all_bills[$key];
+            // If the bill was paid, remove its corresponding income record
+            if ($bill['status'] === 'จ่ายแล้ว') {
+                $main_data['incomes'] = array_values(array_filter($main_data['incomes'], fn($inc) => ($inc['source_bill_id'] ?? null) !== $bill['id']));
+            }
+        }
+        // Proceed with deleting the bill
         $all_bills = array_values(array_filter($all_bills, fn($b) => $b['id'] !== $id));
     }
+
+    // Save changes to both files
     saveRentBills($all_bills);
+    saveMainData($main_data);
+
     header("Location: ?month=" . $month);
     exit;
 }
