@@ -63,7 +63,62 @@ if (isset($_GET['edit_id'])) {
 // Handle Actions (POST/GET)
 $action = $_REQUEST['action'] ?? null;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'save_bill') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'create_all_bills') {
+    // 1. Get bills from the previous month
+    $prev_month_bills_to_copy = array_filter($all_bills, fn($b) => $b['month'] === $prev_mo);
+
+    // 2. Get room numbers that already have a bill in the current month to avoid duplicates
+    $current_month_room_numbers = array_column(array_filter($all_bills, fn($b) => $b['month'] === $month), 'room_number');
+
+    $new_bills_created = 0;
+    foreach ($prev_month_bills_to_copy as $prev_bill) {
+        // 3. Check if a bill for this room already exists in the current month
+        if (in_array($prev_bill['room_number'], $current_month_room_numbers)) {
+            continue; // Skip if bill already exists
+        }
+
+        // 4. Create a new bill with data from the previous month
+        $water_bill = WATER_BILL_AMOUNT;
+        $rent_amount = $prev_bill['rent_amount'];
+        $prev_meter = $prev_bill['current_electric_meter']; // Use last month's current meter
+        
+        // Set current meter to previous meter initially. The user must edit this.
+        $current_meter = $prev_meter; 
+        $electric_units = 0;
+        $electricity_cost = 0;
+        $total_amount = $rent_amount + $water_bill + $electricity_cost;
+
+        $new_bill = [
+            'id' => uniqid('rb_'),
+            'month' => $month,
+            'room_number' => $prev_bill['room_number'],
+            'rent_amount' => $rent_amount,
+            'water_bill' => $water_bill,
+            'prev_electric_meter' => $prev_meter,
+            'current_electric_meter' => $current_meter,
+            'electric_units_used' => $electric_units,
+            'electricity_cost' => $electricity_cost,
+            'total_amount' => $total_amount,
+            'notes' => 'สร้างอัตโนมัติจากข้อมูลเดือนก่อน',
+            'status' => 'ยังไม่จ่าย',
+            'created_at' => date('Y-m-d H:i:s')
+        ];
+
+        $all_bills[] = $new_bill;
+        $new_bills_created++;
+    }
+
+    if ($new_bills_created > 0) {
+        saveRentBills($all_bills);
+        $_SESSION['success_message'] = "สร้างบิลอัตโนมัติสำเร็จ {$new_bills_created} รายการ";
+    } else {
+        $_SESSION['error_message'] = "ไม่สามารถสร้างบิลได้ อาจเนื่องจากมีบิลสำหรับห้องเหล่านั้นในเดือนนี้อยู่แล้ว";
+    }
+
+    header("Location: ?month=" . $month);
+    exit;
+
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'save_bill') {
     $id = !empty($_POST['id']) ? $_POST['id'] : uniqid('rb_');
     $room_number = trim($_POST['room_number'] ?? '');
     $rent_amount = filter_var($_POST['rent_amount'] ?? 0, FILTER_VALIDATE_FLOAT);
@@ -152,6 +207,13 @@ if (isset($_SESSION['error_message'])) {
     unset($_SESSION['error_message']);
 }
 
+// Check for success message
+$success_message = '';
+if (isset($_SESSION['success_message'])) {
+    $success_message = $_SESSION['success_message'];
+    unset($_SESSION['success_message']);
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="th">
@@ -178,6 +240,10 @@ if (isset($_SESSION['error_message'])) {
                     </form>
                     <a href="?month=<?= $next_mo ?>" class="flex items-center justify-center w-8 h-8 rounded-full bg-white text-gray-600 shadow-sm hover:bg-indigo-50 hover:text-indigo-600 transition-colors"><i class="fa-solid fa-chevron-right text-xs"></i></a>
                 </div>
+                <form method="POST" action="?month=<?= $month ?>" onsubmit="return confirm('คุณต้องการสร้างบิลทั้งหมดจากข้อมูลเดือนก่อนหน้าหรือไม่?');" class="hidden sm:block">
+                    <input type="hidden" name="action" value="create_all_bills">
+                    <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-all shadow-sm"><i class="fa-solid fa-bolt"></i> สร้างบิลทั้งหมด</button>
+                </form>
                 <a href="../index.php" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium transition-all shadow-sm"><i class="fa-solid fa-arrow-left"></i> กลับหน้าหลัก</a>
             </div>
         </div>
@@ -187,6 +253,11 @@ if (isset($_SESSION['error_message'])) {
         <?php if ($error_message): ?>
             <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
                 <span class="block sm:inline"><?= $error_message ?></span>
+            </div>
+        <?php endif; ?>
+        <?php if ($success_message): ?>
+            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
+                <span class="block sm:inline"><?= $success_message ?></span>
             </div>
         <?php endif; ?>
 
