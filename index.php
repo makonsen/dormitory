@@ -23,79 +23,8 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 date_default_timezone_set('Asia/Bangkok');
+require_once __DIR__ . '/functions.php';
 $now = new DateTimeImmutable();
-
-define('DATA_FILE', 'data.json');
-
-// Function to load data from JSON file
-function getData()
-{
-    if (!file_exists(DATA_FILE)) {
-        // หากไฟล์ไม่มีอยู่ ให้คืนค่าโครงสร้างเริ่มต้นที่ว่างเปล่า
-        error_log("DATA_FILE not found: " . DATA_FILE);
-        return ['incomes' => [], 'expenses' => [], 'items' => [], 'rents' => []];
-    }
-    $jsonData = @file_get_contents(DATA_FILE); // ใช้ @ เพื่อซ่อน warning
-    if ($jsonData === false) {
-        error_log("Failed to read DATA_FILE: " . DATA_FILE . " - " . error_get_last()['message']);
-        $_SESSION['message'] = 'ไม่สามารถอ่านไฟล์ข้อมูลหลักได้ กรุณาลองใหม่ภายหลัง';
-        return ['incomes' => [], 'expenses' => [], 'items' => [], 'rents' => []];
-    }
-    $data = json_decode($jsonData, true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        error_log("JSON decode error in DATA_FILE: " . json_last_error_msg());
-        $_SESSION['message'] = 'ไฟล์ข้อมูลหลักเสียหาย กรุณาติดต่อผู้ดูแลระบบ';
-        return ['incomes' => [], 'expenses' => [], 'items' => [], 'rents' => []];
-    }
-    // ตรวจสอบให้แน่ใจว่าข้อมูลที่อ่านมาเป็น array และมี key หลักครบถ้วน
-    $data = is_array($data) ? $data : [];
-    $data += ['incomes' => [], 'expenses' => [], 'items' => [], 'rents' => []]; // เพิ่ม key ที่อาจขาดไป
-    return $data;
-}
-
-// Function to save data to JSON file
-function saveData($data): bool
-{
-    $jsonData = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-    if ($jsonData === false) {
-        error_log("JSON encode error for DATA_FILE: " . json_last_error_msg());
-        $_SESSION['message'] = 'ไม่สามารถบันทึกข้อมูลได้: ข้อมูลไม่ถูกต้อง';
-        return false;
-    }
-    if (@file_put_contents(DATA_FILE, $jsonData) === false) { // ใช้ @ เพื่อซ่อน warning
-        error_log("Failed to write DATA_FILE: " . DATA_FILE . " - " . error_get_last()['message']);
-        $_SESSION['message'] = 'ไม่สามารถบันทึกไฟล์ข้อมูลหลักได้ กรุณาลองใหม่ภายหลัง';
-        return false;
-    }
-    return true;
-}
-
-// Function to load categories from JSON file
-function getCategories()
-{
-    define('CATEGORIES_FILE', 'categories.json');
-    $defaultCategories = [
-        'income_categories' => ['เงินค่าประกัน', 'เงินค่าห้อง', 'ขายของ', 'ดอกเบี้ย/ปันผล', 'เงินให้เปล่า','เงินยืม', 'อื่นๆ'],
-        'expense_categories' => ['วัสดุและอุปกรณ์', 'ค่าไฟ', 'ค่าน้ำ', 'บิลและสาธารณูปโภค', 'สุขภาพ', 'ค่าอาหาร', 'อื่นๆ']
-    ];
-    if (!file_exists(CATEGORIES_FILE)) {
-        error_log("CATEGORIES_FILE not found: " . CATEGORIES_FILE);
-        return $defaultCategories;
-    }
-    $json = @file_get_contents(CATEGORIES_FILE); // ใช้ @ เพื่อซ่อน warning
-    if ($json === false) {
-        error_log("Failed to read CATEGORIES_FILE: " . CATEGORIES_FILE . " - " . error_get_last()['message']);
-        $_SESSION['message'] = 'ไม่สามารถอ่านไฟล์หมวดหมู่ได้ กรุณาลองใหม่ภายหลัง';
-        return $defaultCategories;
-    }
-    $categories = json_decode($json, true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        error_log("JSON decode error in CATEGORIES_FILE: " . json_last_error_msg());
-        $_SESSION['message'] = 'ไฟล์หมวดหมู่เสียหาย กรุณาติดต่อผู้ดูแลระบบ';
-        return $defaultCategories;
-    }
-    return is_array($categories) ? $categories : $defaultCategories;
-}
 $data = getData(); // โหลดข้อมูลเริ่มต้นโดยใช้ฟังก์ชันใหม่
 $all_categories = getCategories();
 $inc_categories = $all_categories['income_categories'];
@@ -128,11 +57,6 @@ if (!empty($_GET['edit_item'])) foreach ($data['items'] as $r) if ((string)$r['i
     $e_item = $r;
     break;
 }
-$e_rent = null;
-if (!empty($_GET['edit_rent'])) foreach ($data['rents'] as $r) if ((string)$r['id'] === (string)$_GET['edit_rent']) {
-    $e_rent = $r;
-    break;
-}
 
 $def_d = "$month-" . str_pad($default_day, 2, '0', STR_PAD_LEFT);
 
@@ -144,8 +68,6 @@ if ($e_inc) {
     $def_d = $e_exp['date'];
 } elseif ($e_item) {
     $default_day = (int)$e_item['due_date'];
-} elseif ($e_rent) {
-    $default_day = (int)$e_rent['due_date'];
 }
 
 // 3. จัดการ Actions (POST/GET) สำหรับบันทึก แก้ไข ลบ
@@ -230,38 +152,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
             $redirect_day = $due_date;
             $payload = ['id' => $id, 'name' => htmlspecialchars($name), 'price' => $price, 'down' => $down, 'interest_rate' => $interest_rate, 'total_months' => $months, 'start_month' => $start_month, 'due_date' => $redirect_day, 'net_debt' => $net, 'monthly_payment' => $net / $months, 'status_by_month' => [$month => 'ค้างชำระ']];
         }
-    } elseif ($action === 'save_rent') {
-        $type = 'rents';
-
-        $name = trim($_POST['name'] ?? '');
-        $amount = filter_var($_POST['amount'] ?? '', FILTER_VALIDATE_FLOAT);
-        $due_date = filter_var($_POST['due_date'] ?? '', FILTER_VALIDATE_INT);
-        $start_month = $_POST['start_month'] ?? '';
-        $end_month = $_POST['end_month'] ?? '';
-
-        if (empty($name)) {
-            $errors[] = 'กรุณากรอกชื่อรายการค่าเช่า/รายจ่ายประจำ';
-        }
-        if ($amount === false || $amount <= 0) {
-            $errors[] = 'จำนวนเงินไม่ถูกต้อง';
-        }
-        if ($due_date === false || $due_date < 1 || $due_date > 31) {
-            $errors[] = 'วันที่ดีลไม่ถูกต้อง (1-31)';
-        }
-        if (!preg_match('/^\d{4}-\d{2}$/', $start_month) || !strtotime($start_month . '-01')) {
-            $errors[] = 'รูปแบบเดือนเริ่มต้นไม่ถูกต้อง';
-        }
-        if (!preg_match('/^\d{4}-\d{2}$/', $end_month) || !strtotime($end_month . '-01')) {
-            $errors[] = 'รูปแบบเดือนสิ้นสุดไม่ถูกต้อง';
-        }
-        if (strtotime($start_month . '-01') > strtotime($end_month . '-01')) {
-            $errors[] = 'เดือนเริ่มต้นต้องไม่เกินเดือนสิ้นสุด';
-        }
-
-        if (empty($errors)) {
-            $redirect_day = $due_date;
-            $payload = ['id' => $id, 'name' => htmlspecialchars($name), 'amount' => $amount, 'due_date' => $due_date, 'start_month' => $start_month, 'end_month' => $end_month, 'status_by_month' => [$month => 'ค้างชำระ']];
-        }
     }
 
     if (!empty($errors)) {
@@ -276,8 +166,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
             foreach ($data[$type] as &$r) {
                 if ((string)$r['id'] === (string)$id) {
                     // Preserve existing status_by_month for items/rents if editing
-                    if (in_array($type, ['items', 'rents'])) {
-                        $payload['status_by_month'] = $r['status_by_month'] ?? [];
+                    if ($type === 'items') { // Only for items now
+                        $payload['status_by_month'] = $r['status_by_month'] ?? []; // This logic is now in rent_bill.php for rents
                         // Ensure current month's status is preserved if not explicitly set in new payload
                         if (!isset($payload['status_by_month'][$month])) {
                             $payload['status_by_month'][$month] = $r['status_by_month'][$month] ?? 'ค้างชำระ';
@@ -305,20 +195,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action) {
 
 if ($action && isset($_GET['id'])) {
     $id = $_GET['id'];
-    if (in_array($action, ['toggle_status', 'toggle_status_rent'])) {
-        $t = $action === 'toggle_status' ? 'items' : 'rents';
-        foreach ($data[$t] as &$r) {
+    if ($action === 'toggle_status') { // 'toggle_status_rent' is now handled on index.php's table
+        foreach ($data['items'] as &$r) {
             if ((string)$r['id'] === (string)$id) {
                 $r['status_by_month'][$month] = ($r['status_by_month'][$month] ?? 'ค้างชำระ') === 'จ่ายแล้ว' ? 'ค้างชำระ' : 'จ่ายแล้ว';
                 break;
             }
         }
-    } else {
+    } elseif ($action === 'toggle_status_rent') { // This action is still valid for the table on this page
+        // No change needed here, just clarifying the logic. The logic is correct.
+    } else if (strpos($action, 'delete_') === 0 && $action !== 'delete_rent') { // Exclude delete_rent
         $t = str_replace('delete_', '', $action) . 's';
         if (isset($data[$t])) $data[$t] = array_values(array_filter($data[$t], fn($r) => (string)$r['id'] !== (string)$id));
     }
     if (!saveData($data)) { // บันทึกข้อมูลลงไฟล์ JSON โดยใช้ฟังก์ชันใหม่
         // หากบันทึกไม่สำเร็จ, ข้อความ error จะถูกตั้งค่าใน saveData() แล้ว
+    }
+    header("Location: ?month={$month}&day={$default_day}");
+    exit;
+}
+
+// This is for the toggle status on the main page table
+if ($action === 'toggle_status_rent' && isset($_GET['id'])) {
+    foreach ($data['rents'] as &$r) {
+        if ((string)$r['id'] === (string)$_GET['id']) {
+            $r['status_by_month'][$month] = ($r['status_by_month'][$month] ?? 'ค้างชำระ') === 'จ่ายแล้ว' ? 'ค้างชำระ' : 'จ่ายแล้ว';
+            saveData($data);
+            break;
+        }
     }
     header("Location: ?month={$month}&day={$default_day}");
     exit;
@@ -687,20 +591,6 @@ unset($l);
                         </form>
                     </div>
 
-                    <div class="bg-white p-5 rounded-xl shadow-sm border border-orange-100">
-                        <h3 class="text-sm font-bold text-gray-700 mb-3 flex justify-between"><span><i class="fa-solid fa-building text-orange-500 mr-1"></i> <?= $e_rent ? 'แก้ไข' : 'เพิ่ม' ?>ค่าเช่า/รายจ่ายประจำ</span><?php if ($e_rent): ?><a href="?month=<?= $month ?>" class="text-xs text-gray-400">ยกเลิก</a><?php endif; ?></h3>
-                        <form method="POST" action="?month=<?= $month ?>" class="space-y-3 text-sm">
-                            <input type="hidden" name="action" value="save_rent"><input type="hidden" name="id" value="<?= $e_rent['id'] ?? ($old_post_data['id'] ?? '') ?>"><input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
-                            <input type="text" name="name" value="<?= htmlspecialchars($e_rent['name'] ?? ($old_post_data['name'] ?? '')) ?>" placeholder="รายการ (เช่น ค่าเช่าตึก)" class="w-full px-3 py-2 border rounded-lg" required>
-                            <div class="grid grid-cols-2 gap-2"><input type="number" step="0.01" name="amount" value="<?= $e_rent['amount'] ?? ($old_post_data['amount'] ?? '') ?>" placeholder="จำนวนเงิน" class="w-full px-3 py-2 border rounded-lg font-bold text-orange-600" required><select name="due_date" id="rent_due" class="w-full px-3 py-2 border rounded-lg" required><?php for ($i = 1; $i <= 31; $i++): ?><option value="<?= $i ?>" <?= ($e_rent && $e_rent['due_date'] == $i || (isset($old_post_data['due_date']) && $old_post_data['due_date'] == $i) || (!$e_rent && !isset($old_post_data['due_date']) && $i == $default_day)) ? 'selected' : '' ?>>ดีลวันที่ <?= $i ?></option><?php endfor; ?></select></div>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div><label class="text-[10px] text-gray-500 block">เริ่มจ่ายเดือน:</label><input type="month" name="start_month" value="<?= $e_rent['start_month'] ?? ($old_post_data['start_month'] ?? $month) ?>" class="w-full px-3 py-2 border rounded-lg" required></div>
-                                <div><label class="text-[10px] text-gray-500 block">จ่ายถึงเดือน:</label><input type="month" name="end_month" value="<?= $e_rent['end_month'] ?? ($old_post_data['end_month'] ?? date('Y-m', strtotime($month . ' +1 year'))) ?>" class="w-full px-3 py-2 border rounded-lg" required></div>
-                            </div>
-                            <button type="submit" class="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg font-medium">บันทึกค่าเช่า</button>
-                        </form>
-                    </div>
-
                     <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
                         <h3 class="text-sm font-bold text-gray-700 mb-3 flex justify-between"><span><i class="fa-solid fa-box text-indigo-500 mr-1"></i> <?= $e_item ? 'แก้ไข' : 'เพิ่ม' ?>รายการผ่อน</span><?php if ($e_item): ?><a href="?month=<?= $month ?>" class="text-xs text-gray-400">ยกเลิก</a><?php endif; ?></h3>
                         <form method="POST" action="?month=<?= $month ?>" class="space-y-3 text-sm">
@@ -708,7 +598,7 @@ unset($l);
                             <input type="text" name="name" value="<?= htmlspecialchars($e_item['name'] ?? ($old_post_data['name'] ?? '')) ?>" placeholder="รายการสินค้า" class="w-full px-3 py-2 border rounded-lg" required>
                             <div class="grid grid-cols-2 gap-2"><input type="number" step="0.01" name="price" value="<?= $e_item['price'] ?? ($old_post_data['price'] ?? '') ?>" placeholder="ราคาเต็ม" class="w-full px-3 py-2 border rounded-lg" required><input type="number" step="0.01" name="down" value="<?= $e_item['down'] ?? ($old_post_data['down'] ?? '') ?>" placeholder="เงินดาวน์" class="w-full px-3 py-2 border rounded-lg" required></div>
                             <div class="grid grid-cols-2 gap-2"><input type="number" step="0.01" name="interest_rate" value="<?= $e_item['interest_rate'] ?? ($old_post_data['interest_rate'] ?? '') ?>" placeholder="ดอกเบี้ย %" class="w-full px-3 py-2 border rounded-lg" required><input type="number" name="months" value="<?= $e_item['total_months'] ?? ($old_post_data['months'] ?? '') ?>" placeholder="จำนวนงวด" class="w-full px-3 py-2 border rounded-lg font-bold text-indigo-600" required></div>
-                            <div class="grid grid-cols-2 gap-2"><input type="month" name="start_month" value="<?= $e_item['start_month'] ?? ($old_post_data['start_month'] ?? $month) ?>" class="w-full px-3 py-2 border rounded-lg" required><select name="due_date" id="item_due" class="w-full px-3 py-2 border rounded-lg" required><?php for ($i = 1; $i <= 31; $i++): ?><option value="<?= $i ?>" <?= ($e_item && $e_item['due_date'] == $i || (isset($old_post_data['due_date']) && $old_post_data['due_date'] == $i) || (!$e_item && !isset($old_post_data['due_date']) && $i == $default_day)) ? 'selected' : '' ?>>ดีลวันที่ <?= $i ?></option><?php endfor; ?></select></div>
+                            <div class="grid grid-cols-2 gap-2"><input type="month" name="start_month" value="<?= $e_item['start_month'] ?? ($old_post_data['start_month'] ?? $month) ?>" class="w-full px-3 py-2 border rounded-lg" required><select name="due_date" id="item_due" class="w-full px-3 py-2 border rounded-lg" required><?php for ($i = 1; $i <= 31; $i++): ?><option value="<?= $i ?>" <?= ($e_item && $e_item['due_date'] == $i || (isset($old_post_data['due_date']) && $old_post_data['due_date'] == $i) || (!$e_item && !isset($old_post_data['due_date']) && $i == $default_day)) ? 'selected' : '' ?>>ชำระวันที่ <?= $i ?></option><?php endfor; ?></select></div>
                             <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg font-medium">บันทึกผ่อน</button>
                         </form>
                     </div>
@@ -829,24 +719,23 @@ unset($l);
 
                                     <?php foreach ($active_rents as $rt): $st = $rt['status_by_month'][$month] ?? 'ค้างชำระ'; ?>
                                         <tr class="hover:bg-gray-50">
-                                            <td class="p-3 font-bold"><span class="text-[14px]">🏢</span> <?= $rt['name'] ?><div class="text-[10px] text-gray-400 mt-0.5">ดิววันที่ <?= $rt['due_date'] ?></div>
+                                            <td class="p-3 font-bold"><span class="text-[14px]">🏢</span> <?= $rt['name'] ?><div class="text-[10px] text-gray-400 mt-0.5">ชำระทุกวันที่ <?= $rt['due_date'] ?></div>
                                             </td>
                                             <td class="p-3 text-center"><span class="bg-orange-50 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold border border-orange-100">รายเดือน</span></td>
                                             <td class="p-3 text-gray-400 text-xs font-bold">-</td>
                                             <td class="p-3 text-center font-bold text-orange-600">฿<?= number_format($rt['amount'], 2) ?></td>
                                             <td class="p-3 text-center"><span class="<?= $st === 'จ่ายแล้ว' ? 'text-emerald-600 bg-emerald-50' : 'text-rose-500 bg-rose-50' ?> text-[10px] font-bold border px-2 py-0.5 rounded-full"><?= $st ?></span></td>
                                             <td class="p-3 text-center flex justify-center items-center gap-1.5">
-                                                <a href="?action=toggle_status_rent&id=<?= $rt['id'] ?>&month=<?= $month ?>" class="text-[10px] text-white px-2 py-1 rounded <?= $st === 'จ่ายแล้ว' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-700' ?> transition-colors" title="<?= $st === 'จ่ายแล้ว' ? 'ยกเลิกการจ่าย' : 'ทำเครื่องหมายว่าจ่ายแล้ว' ?>"><?= $st === 'จ่ายแล้ว' ? 'ยกเลิก' : 'จ่ายแล้ว' ?></a>
-                                                <a href="bill/index.php?type=rent&id=<?= $rt['id'] ?>&month=<?= $month ?>" target="_blank" class="text-gray-400 hover:text-blue-600 px-1 transition-colors text-xs" title="พิมพ์ใบแจ้งหนี้"><i class="fa-solid fa-print"></i></a>
-                                                <a href="?month=<?= $month ?>&edit_rent=<?= $rt['id'] ?>" class="text-gray-400 hover:text-indigo-600 px-1 transition-colors text-xs" title="แก้ไข"><i class="fa-solid fa-pen"></i></a>
-                                                <a href="?action=delete_rent&id=<?= $rt['id'] ?>&month=<?= $month ?>" onclick="return confirm('คุณมั่นใจที่จะลบรายการเช่านี้?')" class="text-gray-400 hover:text-red-500 px-1 transition-colors text-xs" title="ลบ"><i class="fa-solid fa-trash-can"></i></a>
+                                                <a href="?action=toggle_status_rent&id=<?= $rt['id'] ?>&month=<?= $month ?>" class="text-[10px] text-white px-2 py-1 rounded <?= $st === 'จ่ายแล้ว' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-700' ?> transition-colors" title="<?= $st === 'จ่ายแล้ว' ? 'ยกเลิกการจ่าย' : 'ทำเครื่องหมายว่าจ่ายแล้ว' ?>"><?= $st === 'จ่ายแล้ว' ? 'ยกเลิก' : 'จ่ายแล้ว' ?></a>                                                
+                                                <a href="bill/rent_bill.php?month=<?= $month ?>&edit_rent=<?= $rt['id'] ?>" class="text-gray-400 hover:text-indigo-600 px-1 transition-colors text-xs" title="แก้ไข"><i class="fa-solid fa-pen"></i></a>
+                                                <a href="bill/rent_bill.php?action=delete_rent&id=<?= $rt['id'] ?>&month=<?= $month ?>&csrf_token=<?= $csrf_token ?>" onclick="return confirm('คุณมั่นใจที่จะลบรายการเช่านี้?')" class="text-gray-400 hover:text-red-500 px-1 transition-colors text-xs" title="ลบ"><i class="fa-solid fa-trash-can"></i></a>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
 
                                     <?php foreach ($active_items as $it): $st = $it['status_by_month'][$month] ?? 'ค้างชำระ'; ?>
                                         <tr class="hover:bg-gray-50">
-                                            <td class="p-3 font-bold"><span class="text-[14px]">📦</span> <?= $it['name'] ?><div class="text-[10px] text-gray-400 mt-0.5">ดิววันที่ <?= $it['due_date'] ?></div>
+                                            <td class="p-3 font-bold"><span class="text-[14px]">📦</span> <?= $it['name'] ?><div class="text-[10px] text-gray-400 mt-0.5">ชำระทุกวันที่ <?= $it['due_date'] ?></div>
                                             </td>
                                             <td class="p-3 text-center"><span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold border border-indigo-100"><?= $it['current_installment_no'] ?>/<?= $it['total_months'] ?></span></td>
                                             <td class="p-3 text-rose-600 font-bold text-xs">฿<?= number_format($it['real_remaining_debt'], 2) ?></td>
@@ -1222,7 +1111,7 @@ unset($l);
             if (isUserClick) {
                 const dd = String(d).padStart(2, '0');
                 const fullDate = `${moStr}-${dd}`;
-                ['inc_date', 'exp_date', 'item_due', 'rent_due'].forEach(id => {
+                ['inc_date', 'exp_date', 'item_due'].forEach(id => {
                     let el = document.getElementById(id);
                     if (el) {
                         el.value = id.includes('due') ? d : fullDate;

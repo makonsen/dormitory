@@ -268,15 +268,6 @@
             "date": "2026-06-13",
             "month": "2026-06",
             "category": "เงินให้เปล่า"
-        },
-        {
-            "id": "inc_6a42b075604b4",
-            "title": "รายรับค่าเช่าห้อง 11 (2026-06)",
-            "amount": 5100,
-            "date": "2026-06-30",
-            "month": "2026-06",
-            "category": "เงินค่าห้อง",
-            "source_bill_id": "rb_6a42b0734723c"
         }
     ],
     "expenses": [
@@ -983,6 +974,23 @@
             "end_month": "2028-06",
             "status_by_month": {
                 "2026-06": "ค้างชำระ"
+            }
+        },
+        {
+            "id": "6a433c4b32069",
+            "name": "11",
+            "amount": 3000,
+            "due_date": 1,
+            "start_month": "2026-06",
+            "end_month": "2027-06",
+            "utility_readings": {
+                "2026-06": {
+                    "water": 0,
+                    "electricity": 1203
+                },
+                "2026-05": {
+                    "electricity": 1000
+                }
             }
         }
     ]
